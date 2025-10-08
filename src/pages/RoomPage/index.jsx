@@ -268,7 +268,7 @@ const RoomPage = ({ socket, users }) => {
     <div className="w-[100%] h-[100vh] flex flex-col justify-center items-center relative overflow-hidden">
       <ToastContainer />
 
-      <div className="floating-buttons-container">
+      {/* <div className="floating-buttons-container">
         <button
           onClick={() => setOpenedUserBar(true)}
           className={`floating-button ${openedUserBar ? 'active' : ''}`}
@@ -292,7 +292,7 @@ const RoomPage = ({ socket, users }) => {
             <HelpCircle size={20} />
           </button>
         )}
-      </div>
+      </div> */}
 
       <div className={`user-bar-container ${openedUserBar ? 'user-bar-open' : 'user-bar-closed'}`} ref={userBarRef}>
         <div className="user-bar-header">
