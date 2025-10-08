@@ -3,65 +3,77 @@ import './App.css'
 import CreateRoom from "./components/Forms/CreateRoom"
 import JoinRoom from "./components/Forms/JoinRoom"
 import RoomPage from "./pages/RoomPage"
-import {Routes,Route} from "react-router-dom"
+import { Routes, Route, useParams, useSearchParams } from "react-router-dom"
 import io from "socket.io-client"
-import { useState,useEffect } from "react"
-import {ToastContainer,toast} from "react-toastify"
-import { Container } from "./components/Container"
+import { useState, useEffect } from "react"
+import { ToastContainer, toast } from "react-toastify"
+// import { Container } from "./components/Container"
+import { useCallback } from "react"
 
 //start both nodemon server.js and yarn run dev on diff terminals to start this
 
 const server = "http://localhost:5000";
-const connectionOptions={
-  "force new connection":true,
-  reconnectionAttempts:"Infinity",
-  timeout:10000,
-  transports:["websocket"]
+const connectionOptions = {
+  "force new connection": true,
+  reconnectionAttempts: "Infinity",
+  timeout: 10000,
+  transports: ["websocket"]
 }
 
-const socket = io(server,connectionOptions)
+const socket = io(server, connectionOptions)
 
 function App() {
 
- const [user,setUser]=useState(null)
- const [users,setUsers] = useState([])
 
-useEffect(()=>{
-  socket.on("room-joined",(data)=>{
-    if(data.success){
-      console.log("userJoined sucessfully:",data.users)
+  const [user, setUser] = useState(null)
+  const [users, setUsers] = useState([])
+
+  const handleRoomJoined = (data) => {
+    if (data.success) {
       setUsers(data.users)
     }
-    else{
+    else {
       console.log("something went wrong")
     }
-  })
-  socket.on("allUsers",data=>{
+  }
+
+  const handleAllUsers = (data) => {
     setUsers(data);
-  })
+  }
 
-  socket.on("userJoinedMessageBroadcasted",(data)=>{
-  console.log("data ==> ", data);
-    console.log(`${data} joined the room`)  
-    toast.info(`${data} joined the room`)
-  })
+  // const handleUserJoinedMessage = useCallback((data) => {
+  //   toast.info(`${data} joined the room`)
+  // }, [])
 
-  socket.on("userLeftMessageBroadcasted",(data)=>{
-    console.log(`${data.name} left the room`);
-    toast.info(`${data.name} left the room`)
-  })
-  
-},[])
+  // const handleUserLeftMessage = useCallback((data) => {
+  //   toast.info(`${data.name} left the room`)
+  // }, [])
+
+  useEffect(() => {
+
+    socket.on("room-joined", handleRoomJoined)
+    socket.on("allUsers", handleAllUsers)
+    // socket.on("userJoinedMessageBroadcasted", handleUserJoinedMessage)
+    // socket.on("userLeftMessageBroadcasted", handleUserLeftMessage)
+
+    // Cleanup function to remove event listeners
+    return () => {
+      socket.off("room-joined", handleRoomJoined)
+      socket.off("allUsers", handleAllUsers)
+      // socket.off("userJoinedMessageBroadcasted", handleUserJoinedMessage)
+      // socket.off("userLeftMessageBroadcasted", handleUserLeftMessage)
+    }
+  }, [])
 
   return (
     <>
-    {/* <Container/> */}
-    <ToastContainer/>
+      {/* <Container/> */}
+      <ToastContainer />
       <Routes>
-        <Route path="/" element={<LandingPage/>}/>
-        <Route path="/create-room" element={<CreateRoom socket={socket} setUser={setUser}/>} />
-        <Route path="/join-room" element={<JoinRoom socket={socket} setUser={setUser}/>} />
-        <Route path="/:roomid" element={<RoomPage user={user} socket={socket} users={users}/>}/>
+        {/* <Route path="/" element={<LandingPage/>}/> */}
+        <Route path="/" element={<CreateRoom socket={socket} setUser={setUser} />} />
+        <Route path="/join-room" element={<JoinRoom socket={socket} setUser={setUser} />} />
+        <Route path="/:roomid" element={<RoomPage user={user} socket={socket} users={users} />} />
       </Routes>
     </>
   )
