@@ -12,7 +12,8 @@ import { useCallback } from "react"
 
 //start both nodemon server.js and yarn run dev on diff terminals to start this
 
-const server = "http://localhost:5000";
+const server = "https://disploy-whiteboard-node-yasc.onrender.com";
+// const server = "http://localhost:5000";
 const connectionOptions = {
   "force new connection": true,
   reconnectionAttempts: "Infinity",
