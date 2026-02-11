@@ -12,26 +12,27 @@ import { v4 as uuidv4 } from 'uuid'
 
 const RoomPage = ({ socket, users }) => {
   const [searchParams] = useSearchParams();
-  const isHost = searchParams.get("host");
+  const host = (searchParams.get("host"));
+  const isHost = host === 'true' ? true : false;
   const { roomid } = useParams()
-  console.log("🚀 ~ RoomPage ~ isHost:", isHost)
-  console.log("🚀 ~ RoomPage ~ roomid:", roomid)
+
 
   const user = {
-    name:"Disploy",
-    id:roomid,
+    name: "Disploy",
+    id: roomid,
     userId: uuidv4(),
-    host:isHost,
-    presenter:isHost
+    host: isHost,
+    presenter: isHost
   }
 
   useEffect(() => {
+
     const userData = {
-      name:'Disploy',
-      id:roomid,
+      name: 'Disploy',
+      id: roomid,
       userId: uuidv4(),
       host: isHost,
-      presenter: isHost
+      presenter: false
     }
 
     socket.emit('user-joined', userData)
@@ -644,7 +645,7 @@ const RoomPage = ({ socket, users }) => {
           </div>
         </div>
       )}
-      {user?.presenter &&
+      {isHost && user?.presenter &&
         <Whiteboard
           canvasRef={canvasRef}
           ctxRef={ctxRef}

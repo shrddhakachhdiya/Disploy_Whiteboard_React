@@ -28,6 +28,16 @@ function App() {
   const [user, setUser] = useState(null)
   const [users, setUsers] = useState([])
 
+  // useEffect(() => {
+  //   const fetchUserDetails = (data) => {
+  //     console.log("🚀 ~ fetchUserDetails ~ data:", data)
+
+  //   }
+
+  //       socket.on("userLeftMessageBroadcasted", fetchUserDetails)
+
+  // }, [])
+
   const handleRoomJoined = (data) => {
     if (data.success) {
       setUsers(data.users)
@@ -45,16 +55,25 @@ function App() {
   //   toast.info(`${data} joined the room`)
   // }, [])
 
-  // const handleUserLeftMessage = useCallback((data) => {
-  //   toast.info(`${data.name} left the room`)
-  // }, [])
+  const handleUserLeftMessage = useCallback((data) => {
+    console.log("🚀 ~ App ~ data:", data)
+    console.log('testing data')
 
+    toast.info(`${data.name} left the room`)
+  }, [])
+
+  const fetchUserDetails = (data) => {
+    console.log('testing data')
+    console.log("🚀 ~ fetchUserDetails ~ data:", data)
+
+  }
+  console.log('shraddha ...')
   useEffect(() => {
-
+    // socket.on("userLeftMessageBroadcasted", fetchUserDetails)
     socket.on("room-joined", handleRoomJoined)
     socket.on("allUsers", handleAllUsers)
     // socket.on("userJoinedMessageBroadcasted", handleUserJoinedMessage)
-    // socket.on("userLeftMessageBroadcasted", handleUserLeftMessage)
+    socket.on("userLeftMessageBroadcasted", handleUserLeftMessage)
 
     // Cleanup function to remove event listeners
     return () => {
