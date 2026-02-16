@@ -12,14 +12,15 @@ import { useCallback } from "react"
 
 //start both nodemon server.js and yarn run dev on diff terminals to start this
 
-const server = "https://disploy-whiteboard-node-yasc.onrender.com";
+const server = "https://disploy-whiteboard-node-nyxk.onrender.com";
 // const server = "http://localhost:5000";
+
 const connectionOptions = {
-  "force new connection": true,
-  reconnectionAttempts: "Infinity",
-  timeout: 10000,
-  transports: ["websocket"]
-}
+  reconnection: true,
+  reconnectionAttempts: Infinity,
+  timeout: 20000,
+};
+
 
 const socket = io(server, connectionOptions)
 
@@ -32,12 +33,20 @@ function App() {
   // useEffect(() => {
   //   const fetchUserDetails = (data) => {
   //     console.log("🚀 ~ fetchUserDetails ~ data:", data)
-
   //   }
-
   //       socket.on("userLeftMessageBroadcasted", fetchUserDetails)
-
   // }, [])
+
+  useEffect(() => {
+    socket.on("connect", () => {
+      console.log("✅ Socket connected");
+    });
+
+    socket.on("connect_error", (err) => {
+      console.log("❌ Socket error:", err.message);
+    });
+  }, []);
+
 
   const handleRoomJoined = (data) => {
     if (data.success) {
@@ -68,7 +77,7 @@ function App() {
     console.log("🚀 ~ fetchUserDetails ~ data:", data)
 
   }
-  console.log('shraddha ...')
+
   useEffect(() => {
     // socket.on("userLeftMessageBroadcasted", fetchUserDetails)
     socket.on("room-joined", handleRoomJoined)
@@ -81,7 +90,7 @@ function App() {
       socket.off("room-joined", handleRoomJoined)
       socket.off("allUsers", handleAllUsers)
       // socket.off("userJoinedMessageBroadcasted", handleUserJoinedMessage)
-      // socket.off("userLeftMessageBroadcasted", handleUserLeftMessage)
+      socket.off("userLeftMessageBroadcasted", handleUserLeftMessage)
     }
   }, [])
 
