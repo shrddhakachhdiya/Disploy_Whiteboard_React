@@ -7,28 +7,60 @@ import UserWhiteBoard from "../../components/Whiteboard/UserWhiteBoard";
 import { Pencil, LineSquiggle, CircleSmall, CaseUpper, RectangleHorizontal, Circle, Image, PaintBucket, Undo, Redo, Eraser, MessageCircle, HelpCircle } from 'lucide-react';
 import { useParams, useSearchParams } from "react-router-dom";
 import { v4 as uuidv4 } from 'uuid'
+import axios from "axios";
 
 
 
 const RoomPage = ({ socket, users }) => {
   const [searchParams] = useSearchParams();
-  const host = (searchParams.get("host"));
-  const isHost = host === 'true' ? true : false;
   const { roomid } = useParams()
 
+  // Determine host status: URL param takes priority, then localStorage
+  const hostParam = searchParams.get("host");
+  let isHost = false;
+
+  if (hostParam === 'true') {
+    // First visit with ?host=true — store in localStorage and strip from URL
+    isHost = true;
+    localStorage.setItem("whiteboard_host", JSON.stringify({ host: true, roomId: roomid }));
+    // Remove ?host=true from URL so user can't modify it
+    const url = new URL(window.location.href);
+    url.searchParams.delete("host");
+    window.history.replaceState({}, '', url.pathname);
+  } else {
+    // Check localStorage for host status
+    try {
+      const stored = JSON.parse(localStorage.getItem("whiteboard_host"));
+      if (stored && stored.host === true && stored.roomId === roomid) {
+        isHost = true;
+      }
+    } catch (e) {
+      // Invalid localStorage data, ignore
+    }
+  }
 
   const user = {
-    name: "Disploy",
+    name: isHost ? "Disploy" : "User",
     id: roomid,
     userId: uuidv4(),
     host: isHost,
     presenter: isHost
   }
 
+  // On mount, check if this is a reload — if so, redirect to web.disploy.com
   useEffect(() => {
+    if (sessionStorage.getItem("whiteboard_reloading")) {
+      sessionStorage.removeItem("whiteboard_reloading");
+      localStorage.removeItem("whiteboard_host");
+      localStorage.removeItem("whiteboard_macids");
+      window.location.href = "https://web.disploy.com";
+      return;
+    }
+  }, []);
 
+  useEffect(() => {
     const userData = {
-      name: 'Disploy',
+      name: isHost ? 'Disploy' : 'User',
       id: roomid,
       userId: uuidv4(),
       host: isHost,
@@ -36,7 +68,67 @@ const RoomPage = ({ socket, users }) => {
     }
 
     socket.emit('user-joined', userData)
+
+    // If host, fetch macIds from API, store in localStorage, and send to server
+    if (isHost) {
+      axios.get(`https://back.disploy.com/api/WhiteBoardMaster/GetWhiteBoardMacIDs?code=${roomid}`)
+        .then((res) => {
+          console.log("🚀 ~ Fetched macIds response:", res?.data)
+          const macIds = res?.data?.data?.maciDs || "";
+          console.log("🚀 ~ Fetched macIds:", macIds);
+          localStorage.setItem("whiteboard_macids", JSON.stringify(macIds));
+          // Send macIds to server so it can use them on disconnect
+          socket.emit('store-macids', { roomId: roomid, macIds: macIds });
+        })
+        .catch((error) => {
+          console.error("❌ Error fetching macIds:", error);
+        });
+    }
+
+    // Set reload flag on beforeunload & clean up localStorage (only for host)
+    const handleBeforeUnload = () => {
+      if (isHost) {
+        sessionStorage.setItem("whiteboard_reloading", "true");
+      }
+      localStorage.removeItem("whiteboard_host");
+      localStorage.removeItem("whiteboard_macids");
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
   }, [isHost])
+
+  const handleAllUsers = (data) => {
+    console.log("🚀 ~ handleAllUsers ~ user:", data)
+    const host = data.some(user => user.host === true);
+    console.log("🚀 ~ handleAllUsers ~ host:", host)
+    if (!host) {
+      console.log(`⚠️ No host found in room ${roomid}. Redirecting to homepage...`);
+      if (user && user?.id) {
+        console.log("🚀 ~ handleAllUsers ~ user before code removal:", user)
+        const UserCode = user?.id
+        axios.post('https://back.disploy.com/api/WhiteBoardMaster/RemoveWhiteBoardScreenCode', {
+          code: UserCode
+        }).then((res) => {
+          console.log("🚀 ~ remove code res:", res?.data)
+        }).catch(error => {
+          console.error('Error removing whiteboard screen code:', error);
+        });
+      }
+    } else {
+      setUsers(data)
+    }
+  }
+
+  useEffect(() => {
+    socket.on("allUsers", handleAllUsers)
+
+    return () => {
+      socket.off("allUsers", handleAllUsers)
+    }
+  }, [])
 
   const [tool, setTool] = useState("pencil");
   const [color, setColor] = useState("#000000");

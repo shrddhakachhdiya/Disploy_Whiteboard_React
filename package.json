@@ -11,6 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "axios": "^1.13.6",
     "fabric": "^5.3.0",
     "fabricjs-react": "^1.2.0",
     "lucide-react": "^0.545.0",
