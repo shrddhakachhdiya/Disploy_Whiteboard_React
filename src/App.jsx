@@ -3,7 +3,7 @@ import './App.css'
 import CreateRoom from "./components/Forms/CreateRoom"
 import JoinRoom from "./components/Forms/JoinRoom"
 import RoomPage from "./pages/RoomPage"
-import { Routes, Route, useParams, useSearchParams, useNavigate } from "react-router-dom"
+import { Routes, Route, useParams, useSearchParams, useNavigate,useLocation } from "react-router-dom"
 import io from "socket.io-client"
 import { useState, useEffect } from "react"
 import { ToastContainer, toast } from "react-toastify"
@@ -27,10 +27,18 @@ const socket = io(server, connectionOptions)
 function App() {
 
   const navigate = useNavigate()
+  const location = useLocation()
 
 
   const [user, setUser] = useState(null)
   const [users, setUsers] = useState([])
+
+    useEffect(() => {
+    const roomid = location.pathname.replace("/", "");
+    if (!roomid ) {
+      window.location.replace("https://web.disploy.com/");
+    } 
+  }, [location]);
 
   // useEffect(() => {
   //   const fetchUserDetails = (data) => {
