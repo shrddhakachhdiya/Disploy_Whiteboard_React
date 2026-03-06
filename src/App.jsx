@@ -12,8 +12,8 @@ import { useCallback } from "react"
 
 //start both nodemon server.js and yarn run dev on diff terminals to start this
 
-// const server = "https://disploy-whiteboard-node-nyxk.onrender.com";
-const server = "http://192.168.29.119:5000";
+const server = "https://disploy-whiteboard-node-nyxk.onrender.com";
+// const server = "http://192.168.29.119:5000";
 
 const connectionOptions = {
   reconnection: true,
