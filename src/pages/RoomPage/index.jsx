@@ -8,6 +8,8 @@ import { Pencil, LineSquiggle, CircleSmall, CaseUpper, RectangleHorizontal, Circ
 import { useParams, useSearchParams } from "react-router-dom";
 import { v4 as uuidv4 } from 'uuid'
 import axios from "axios";
+import { Tooltip } from "react-tooltip";
+import "react-tooltip/dist/react-tooltip.css";
 
 
 
@@ -608,31 +610,75 @@ const RoomPage = ({ socket, users }) => {
       {isAdmin && (
         <div className="flex items-center justify-center gap-4 p-2 rounded-xl mb-4 toolNav absolute bottom-1">
           <div className="flex gap-4 [&>div]:cursor-pointer">
-            <div className={"text-white rounded-md p-3 " + (tool === "pencil" ? "toolShadow" : "")}>
-              <div onClick={() => setTool("pencil")}><Pencil size={20} style={{ stroke: tool === "pencil" ? "white" : "black" }} /></div>
-            </div>
-            <div className={"text-white rounded-md p-3 " + (tool === "line" ? "toolShadow" : "")}>
-              <div onClick={() => setTool("line")} ><LineSquiggle size={20} style={{ stroke: tool === "line" ? "white" : "black" }} /></div>
+            <div
+              data-tooltip-id="pencil-tool"
+              data-tooltip-content="Pencil"
+              className={"text-white rounded-md p-3 transition-all duration-200 hover:scale-110 " + (tool === "pencil" ? "toolShadow" : "")}
+              onClick={() => setTool("pencil")}
+            >
+              <Pencil size={20} style={{ stroke: tool === "pencil" ? "white" : "black" }} />
             </div>
 
-            <div className={"text-white rounded-md p-3 " + (tool === "point" ? "toolShadow" : "")}>
-              <div onClick={() => setTool("point")} ><CircleSmall size={20} style={{ fill: tool === "point" ? "white" : "black", stroke: tool === "point" ? "white" : "black" }} /></div>
+            <div 
+              data-tooltip-id="line-tool"
+              data-tooltip-content="Line"
+              className={"text-white rounded-md p-3 transition-all duration-200 hover:scale-110 " + (tool === "line" ? "toolShadow" : "")}
+              onClick={() => setTool("line")}
+            >
+              <LineSquiggle size={20} style={{ stroke: tool === "line" ? "white" : "black" }} />
             </div>
-            <div className={"text-white rounded-md p-3 " + (tool === "text" ? "toolShadow" : "")}>
-              <div onClick={() => { setTool("text"); setIsTextInputOpen(true) }}><CaseUpper size={20} style={{ stroke: tool === "text" ? "white" : "black" }} /></div>
+
+            <div 
+              data-tooltip-id="point-tool"
+              data-tooltip-content="Point"
+              className={"text-white rounded-md p-3 transition-all duration-200 hover:scale-110 " + (tool === "point" ? "toolShadow" : "")}
+              onClick={() => setTool("point")}
+            >
+              <CircleSmall size={20} style={{ fill: tool === "point" ? "white" : "black", stroke: tool === "point" ? "white" : "black" }} />
             </div>
-            <div className={"text-white rounded-md p-3 " + (tool === "rect" ? "toolShadow" : "")}>
-              <div onClick={() => setTool("rect")}><RectangleHorizontal size={20} style={{ stroke: tool === "rect" ? "white" : "black" }} /></div>
+
+            <div 
+              data-tooltip-id="text-tool"
+              data-tooltip-content="Text"
+              className={"text-white rounded-md p-3 transition-all duration-200 hover:scale-110 " + (tool === "text" ? "toolShadow" : "")}
+              onClick={() => { setTool("text"); setIsTextInputOpen(true) }}
+            >
+              <CaseUpper size={20} style={{ stroke: tool === "text" ? "white" : "black" }} />
             </div>
-            <div className={"text-white rounded-md p-3 " + (tool === "circle" ? "toolShadow" : "")}>
-              <div onClick={() => setTool("circle")}><Circle size={20} style={{ stroke: tool === "circle" ? "white" : "black" }} /></div>
+
+            <div 
+              data-tooltip-id="rect-tool"
+              data-tooltip-content="Rectangle"
+              className={"text-white rounded-md p-3 transition-all duration-200 hover:scale-110 " + (tool === "rect" ? "toolShadow" : "")}
+              onClick={() => setTool("rect")}
+            >
+              <RectangleHorizontal size={20} style={{ stroke: tool === "rect" ? "white" : "black" }} />
             </div>
-            <div className={"text-white rounded-md p-3 " + (tool === "eraser" ? "toolShadow" : "")}>
-              <div onClick={() => setTool("eraser")}><Eraser size={20} style={{ stroke: tool === "eraser" ? "white" : "black" }} /></div>
+
+            <div 
+              data-tooltip-id="circle-tool"
+              data-tooltip-content="Circle"
+              className={"text-white rounded-md p-3 transition-all duration-200 hover:scale-110 " + (tool === "circle" ? "toolShadow" : "")}
+              onClick={() => setTool("circle")}
+            >
+              <Circle size={20} style={{ stroke: tool === "circle" ? "white" : "black" }} />
+            </div>
+
+            <div 
+              data-tooltip-id="eraser-tool"
+              data-tooltip-content="Eraser"
+              className={"text-white rounded-md p-3 transition-all duration-200 hover:scale-110 " + (tool === "eraser" ? "toolShadow" : "")}
+              onClick={() => setTool("eraser")}
+            >
+              <Eraser size={20} style={{ stroke: tool === "eraser" ? "white" : "black" }} />
             </div>
           </div>
 
-          <div className={"relative color-picker-container rounded-md p-3 " + (tool === "color" ? "toolShadow" : "")}>
+          <div
+            className={"relative color-picker-container rounded-md p-3 transition-all duration-200 hover:scale-110 " + (tool === "color" ? "toolShadow" : "")}
+            data-tooltip-id="color-picker"
+            data-tooltip-content="Color Picker"
+          >
             <div onClick={() => setShowColorPicker((v) => !v)} style={{ cursor: "pointer" }}>
               <PaintBucket size={20} style={{ stroke: color }} />
             </div>
@@ -678,7 +724,11 @@ const RoomPage = ({ socket, users }) => {
             )}
           </div>
 
-          <div className={"image-selector-container relative rounded-md p-2 " + (tool === "image" ? "toolShadow" : "")}>
+          <div
+            className={"image-selector-container relative rounded-md p-2 transition-all duration-200 hover:scale-110 " + (tool === "image" ? "toolShadow" : "")}
+            data-tooltip-id="image-tool"
+            data-tooltip-content="Insert Image"
+          >
             <div onClick={() => { setTool("image"); setShowImageSelector((v) => !v) }} style={{ cursor: "pointer" }}>
               <Image size={20} style={{ stroke: tool === "image" ? "white" : "black" }} />
             </div>
@@ -712,16 +762,20 @@ const RoomPage = ({ socket, users }) => {
 
           <div className="flex items-center gap-2">
             <button
-              className={"undo rounded-md p-2 cursor-pointer " + (tool === "undo" ? "toolShadow" : "")}
+              className={"undo rounded-md p-2 cursor-pointer transition-all duration-200 hover:scale-110 " + (tool === "undo" ? "toolShadow" : "")}
               onClick={handleUndo}
               disabled={elements.length === 0}
+              data-tooltip-id="undo-tool"
+              data-tooltip-content="Undo (Ctrl+Z)"
             >
               <Undo size={20} />
             </button>
             <button
-              className={"redo rounded-md p-2 cursor-pointer " + (tool === "redo" ? "toolShadow" : "")}
+              className={"redo rounded-md p-2 cursor-pointer transition-all duration-200 hover:scale-110 " + (tool === "redo" ? "toolShadow" : "")}
               onClick={handleRedo}
               disabled={history.length === 0}
+              data-tooltip-id="redo-tool"
+              data-tooltip-content="Redo (Ctrl+Y)"
             >
               <Redo size={20} />
             </button>
@@ -729,12 +783,28 @@ const RoomPage = ({ socket, users }) => {
 
           <div>
             <button
-              className=" bg-red-500 rounded-md p-2 clear"
+              className="bg-red-500 rounded-md p-2 clear transition-all duration-200 hover:scale-105 hover:bg-red-600"
               onClick={handleClear}
+              data-tooltip-id="clear-tool"
+              data-tooltip-content="Clear Canvas"
             >
               Clear Canvas
             </button>
           </div>
+
+          {/* Tooltip Components */}
+          <Tooltip id="pencil-tool" place="top" delayShow={300} events={['hover']} />
+          <Tooltip id="line-tool" place="top" delayShow={300} events={['hover']} />
+          <Tooltip id="point-tool" place="top" delayShow={300} events={['hover']} />
+          <Tooltip id="text-tool" place="top" delayShow={300} events={['hover']} />
+          <Tooltip id="rect-tool" place="top" delayShow={300} events={['hover']} />
+          <Tooltip id="circle-tool" place="top" delayShow={300} events={['hover']} />
+          <Tooltip id="eraser-tool" place="top" delayShow={300} events={['hover']} />
+          <Tooltip id="color-picker" place="top" delayShow={300} events={['hover']} />
+          <Tooltip id="image-tool" place="top" delayShow={300} events={['hover']} />
+          <Tooltip id="undo-tool" place="top" delayShow={300} events={['hover']} />
+          <Tooltip id="redo-tool" place="top" delayShow={300} events={['hover']} />
+          <Tooltip id="clear-tool" place="top" delayShow={300} events={['hover']} />
         </div>
       )}
       {isHost && user?.presenter &&
