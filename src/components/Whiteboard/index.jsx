@@ -18,7 +18,8 @@ const Whiteboard = ({
   socket,
   sendCanvasData,
   selectedElements,
-  setSelectedElements
+  setSelectedElements,
+  onTextDoubleClick
 }) => {
 
   const [img, setImg] = useState(null);
@@ -34,13 +35,22 @@ const Whiteboard = ({
   const [erasing, setErasing] = useState(false);
   const imagesCache = useRef({});
   const userCanvasRef = useRef(null);
+  const lastEmitTime = useRef(0);
+  const EMIT_THROTTLE = 100; // Throttle socket emissions to once per 100ms
+  const MAX_CACHE_SIZE = 150; // Increased from 50 to support more images
 
 
 
   useEffect(() => {
-    socket.on("WhiteboardImageRes", (data) => {
-      setImg(data.imgURL);
-    });
+    const handleImageRes = (data) => {
+      setImg(data?.imgURL);
+    };
+    
+    socket.on("WhiteboardImageRes", handleImageRes);
+    
+    return () => {
+      socket.off("WhiteboardImageRes", handleImageRes);
+    };
   }, [socket]);
 
 
@@ -73,6 +83,14 @@ const Whiteboard = ({
   useEffect(() => {
     if (canvasRef.current) ctxRef.current.strokeStyle = color;
   }, [color]);
+
+  // Cleanup on unmount to free memory
+  useEffect(() => {
+    return () => {
+      // Clear image cache on unmount
+      imagesCache.current = {};
+    };
+  }, []);
 
   useLayoutEffect(() => {
     if (!canvasRef.current || !ctxRef.current) return;
@@ -151,6 +169,14 @@ const Whiteboard = ({
       } else if (element.type === "image") {
         if (!imagesCache.current[element.src]) {
           imagesToLoad++;
+          // Clear cache if it gets too large
+          const cacheKeys = Object.keys(imagesCache.current);
+          if (cacheKeys.length >= MAX_CACHE_SIZE) {
+            // Remove oldest half of cache
+            const keysToRemove = cacheKeys.slice(0, Math.floor(cacheKeys.length / 2));
+            keysToRemove.forEach(key => delete imagesCache.current[key]);
+          }
+          
           const imageObj = new Image();
           imageObj.src = element.src;
           imageObj.onload = () => {
@@ -162,6 +188,9 @@ const Whiteboard = ({
               element.width,
               element.height
             );
+          };
+          imageObj.onerror = () => {
+            console.log('Failed to load image:', element.src);
           };
         } else {
           ctx.drawImage(
@@ -223,7 +252,12 @@ const Whiteboard = ({
       }, 0);
     }
 
-    socket.emit("WhiteboardElements", elements);
+    // Throttle socket emissions to prevent memory issues
+    const now = Date.now();
+    if (now - lastEmitTime.current > EMIT_THROTTLE) {
+      socket.emit("WhiteboardElements", elements);
+      lastEmitTime.current = now;
+    }
 
   }, [elements, shouldSendCanvas]);
 
@@ -431,60 +465,80 @@ const Whiteboard = ({
   function handleMouseDown(e) {
     const { offsetX, offsetY } = e.nativeEvent;
 
-    for (let i = elements.length - 1; i >= 0; i--) {
-      const element = elements[i];
-      const direction = getResizeDirection(offsetX, offsetY, element);
-      if (direction) {
-        setResizing(true);
-        setResizeDirection(direction);
-        setResizeElementIndex(i);
-        return;
-      }
-    }
+    // Define drawing tools that should not trigger element selection/dragging
+    const drawingTools = ["pencil", "line", "rect", "circle", "point", "text", "eraser"];
+    const isDrawingTool = drawingTools.includes(tool);
+    const isMoveToolActive = tool === "move" || tool === "";
 
-    let clickedElementIndex = -1;
-    for (let i = elements.length - 1; i >= 0; i--) {
-      if (isPointInElement(offsetX, offsetY, elements[i])) {
-        clickedElementIndex = i;
-        break;
-      }
-    }
-
-    if (clickedElementIndex !== -1) {
-      const clickedElement = elements[clickedElementIndex];
-
-      if (e.ctrlKey && setSelectedElements) {
-        const isAlreadySelected = selectedElements.some(selectedEl =>
-          selectedEl.offsetX === clickedElement.offsetX &&
-          selectedEl.offsetY === clickedElement.offsetY &&
-          selectedEl.type === clickedElement.type
-        );
-
-        if (isAlreadySelected) {
-          setSelectedElements(selectedElements.filter(selectedEl =>
-            !(selectedEl.offsetX === clickedElement.offsetX &&
-              selectedEl.offsetY === clickedElement.offsetY &&
-              selectedEl.type === clickedElement.type)
-          ));
-        } else {
-          setSelectedElements([...selectedElements, clickedElement]);
+    // If a drawing tool is selected, skip element selection/dragging and proceed to drawing
+    // Allow selection/dragging when move tool is active or no tool selected
+    if (!isDrawingTool || isMoveToolActive) {
+      // Check for resize handles
+      for (let i = elements.length - 1; i >= 0; i--) {
+        const element = elements[i];
+        const direction = getResizeDirection(offsetX, offsetY, element);
+        if (direction) {
+          setResizing(true);
+          setResizeDirection(direction);
+          setResizeElementIndex(i);
+          return;
         }
-        return;
-      } else if (setSelectedElements) {
-        setSelectedElements([clickedElement]);
       }
 
-      const dragOffsetX = offsetX - clickedElement.offsetX;
-      const dragOffsetY = offsetY - clickedElement.offsetY;
+      // Check for element selection/dragging
+      let clickedElementIndex = -1;
+      for (let i = elements.length - 1; i >= 0; i--) {
+        if (isPointInElement(offsetX, offsetY, elements[i])) {
+          clickedElementIndex = i;
+          break;
+        }
+      }
 
-      setDragging(true);
-      setDraggedElementIndex(clickedElementIndex);
-      setDragOffset({ x: dragOffsetX, y: dragOffsetY });
-      return;
+      if (clickedElementIndex !== -1) {
+        const clickedElement = elements[clickedElementIndex];
+
+        if (e.ctrlKey && setSelectedElements) {
+          const isAlreadySelected = selectedElements.some(selectedEl =>
+            selectedEl.offsetX === clickedElement.offsetX &&
+            selectedEl.offsetY === clickedElement.offsetY &&
+            selectedEl.type === clickedElement.type
+          );
+
+          if (isAlreadySelected) {
+            setSelectedElements(selectedElements.filter(selectedEl =>
+              !(selectedEl.offsetX === clickedElement.offsetX &&
+                selectedEl.offsetY === clickedElement.offsetY &&
+                selectedEl.type === clickedElement.type)
+            ));
+          } else {
+            setSelectedElements([...selectedElements, clickedElement]);
+          }
+          return;
+        } else if (setSelectedElements) {
+          setSelectedElements([clickedElement]);
+        }
+
+        const dragOffsetX = offsetX - clickedElement.offsetX;
+        const dragOffsetY = offsetY - clickedElement.offsetY;
+
+        setDragging(true);
+        setDraggedElementIndex(clickedElementIndex);
+        setDragOffset({ x: dragOffsetX, y: dragOffsetY });
+        return;
+      }
+
+      if (setSelectedElements && !e.ctrlKey) {
+        setSelectedElements([]);
+      }
+    } else {
+      if (setSelectedElements) {
+        setSelectedElements([]);
+      }
     }
 
-    if (setSelectedElements && !e.ctrlKey) {
-      setSelectedElements([]);
+    // Drawing tool actions - only execute if NOT move tool
+    if (isMoveToolActive) {
+      return; // Don't create new elements when move tool is active
     }
 
     if (tool === "pencil") {
@@ -609,15 +663,47 @@ const Whiteboard = ({
     sendCanvasData();
   }
 
+  function handleDoubleClick(e) {
+    const { offsetX, offsetY } = e.nativeEvent;
+    
+    // Find if a text element was double-clicked
+    for (let i = elements.length - 1; i >= 0; i--) {
+      const element = elements[i];
+      if (element.type === 'text' && isPointInElement(offsetX, offsetY, element)) {
+        // Call the callback to open the text editor
+        if (onTextDoubleClick) {
+          onTextDoubleClick(i, element.text);
+        }
+        break;
+      }
+    }
+  }
+
   function handleMouseMove(e) {
     const { offsetX, offsetY } = e.nativeEvent;
 
     if (!isDrawing && !dragging && !resizing && !erasing) {
       let newCursor = 'default';
 
-      if (tool === "eraser") {
-        newCursor = 'crosshair';
-      } else {
+      // Set cursor based on selected tool
+      if (tool === "pencil") {
+        newCursor = 'cursor-pencil';
+      } else if (tool === "line") {
+        newCursor = 'cursor-line';
+      } else if (tool === "point") {
+        newCursor = 'cursor-point';
+      } else if (tool === "text") {
+        newCursor = 'cursor-text';
+      } else if (tool === "rect") {
+        newCursor = 'cursor-rect';
+      } else if (tool === "circle") {
+        newCursor = 'cursor-circle';
+      } else if (tool === "eraser") {
+        newCursor = 'cursor-eraser';
+      } else if (tool === "image") {
+        newCursor = 'cursor-image';
+      } else if (tool === "move" || tool === "") {
+        // Move tool or no tool - check for resize handles and moveable elements
         for (let i = elements.length - 1; i >= 0; i--) {
           const element = elements[i];
           const direction = getResizeDirection(offsetX, offsetY, element);
@@ -629,6 +715,9 @@ const Whiteboard = ({
             break;
           }
         }
+      } else {
+        // Default cursor for any other case
+        newCursor = 'default';
       }
 
       if (cursor !== newCursor) {
@@ -850,12 +939,19 @@ const Whiteboard = ({
         overflow: "hidden",
         cursor: cursor
       }}
+      className={`shadow-lg ${!user?.presenter ? "pointer-events-none" : ""}`}
       onMouseDown={handleMouseDown}
       onMouseUp={handleMouseUp}
       onMouseMove={handleMouseMove}
-      className={`shadow-lg ${!user?.presenter ? "pointer-events-none" : ""}`}
+      onDoubleClick={handleDoubleClick}
     >
-      <canvas className="bg-white" ref={canvasRef}></canvas>
+      <canvas
+        className={`bg-white ${cursor.startsWith('cursor-') ? cursor : ''}`}
+        style={{
+          cursor: cursor.startsWith('cursor-') ? undefined : cursor
+        }}
+        ref={canvasRef}
+      ></canvas>
     </div>
   );
 };

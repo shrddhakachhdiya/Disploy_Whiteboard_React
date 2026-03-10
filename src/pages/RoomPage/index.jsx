@@ -4,7 +4,7 @@ import Chat from "../../components/ChatBar";
 import "./index.css";
 import { toast, ToastContainer } from "react-toastify";
 import UserWhiteBoard from "../../components/Whiteboard/UserWhiteBoard";
-import { Pencil, LineSquiggle, CircleSmall, CaseUpper, RectangleHorizontal, Circle, Image, PaintBucket, Undo, Redo, Eraser, MessageCircle, HelpCircle } from 'lucide-react';
+import { Pencil, LineSquiggle, CircleSmall, CaseUpper, RectangleHorizontal, Circle, Image, PaintBucket, Undo, Redo, Eraser, MessageCircle, HelpCircle, Move } from 'lucide-react';
 import { useParams, useSearchParams } from "react-router-dom";
 import { v4 as uuidv4 } from 'uuid'
 import axios from "axios";
@@ -132,11 +132,15 @@ const RoomPage = ({ socket, users }) => {
     }
   }, [])
 
-  const [tool, setTool] = useState("pencil");
+  const [tool, setTool] = useState("move");
   const [color, setColor] = useState("#000000");
   const [elements, setElements] = useState([]);
   const [history, setHistory] = useState([]);
-
+  
+  // Memory limits - Increased for better performance
+  const MAX_ELEMENTS = 10000; // Increased from 5000
+  const MAX_HISTORY = 100;
+  const MAX_IMAGE_ELEMENTS = 100; // Maximum number of images allowed
 
   const [fontSize, setFontSize] = useState(16);
   const [fontFamily, setFontFamily] = useState("Arial");
@@ -146,6 +150,7 @@ const RoomPage = ({ socket, users }) => {
   const [image, setImage] = useState(null);
   const [isTextInputOpen, setIsTextInputOpen] = useState(false);
   const [textInput, setTextInput] = useState("");
+  const [editingTextIndex, setEditingTextIndex] = useState(null); // Track which text element is being edited
   const [chat, setChat] = useState([])
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showImageSelector, setShowImageSelector] = useState(false);
@@ -164,7 +169,9 @@ const RoomPage = ({ socket, users }) => {
     const context = canvas.getContext("2d");
     context.clearRect(0, 0, canvas.width, canvas.height);
     setElements([]);
-    setTool("pencil")
+    setHistory([]);
+    setSelectedElements([]);
+    setTool("move");
   }
 
   function handleUndo() {
@@ -172,10 +179,14 @@ const RoomPage = ({ socket, users }) => {
 
     const lastElement = elements[elements.length - 1];
 
-    setHistory((prevHistory) => [
-      ...prevHistory,
-      lastElement,
-    ]);
+    setHistory((prevHistory) => {
+      const newHistory = [...prevHistory, lastElement];
+      // Limit history size to prevent memory issues
+      if (newHistory.length > MAX_HISTORY) {
+        return newHistory.slice(-MAX_HISTORY);
+      }
+      return newHistory;
+    });
 
     // If the last element was erased, restore it by removing the isErased flag
     if (lastElement.isErased) {
@@ -235,9 +246,33 @@ const RoomPage = ({ socket, users }) => {
     const file = event.target.files[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => setImage(reader.result);
+      reader.onloadend = () => {
+        const imageData = reader.result;
+        
+        // Automatically add image to whiteboard at center
+        const centerX = window.innerWidth / 2 - 100;
+        const centerY = window.innerHeight / 2 - 100;
+        
+        setElements((prevElements) => [
+          ...prevElements,
+          {
+            type: "image",
+            offsetX: centerX,
+            offsetY: centerY,
+            height: 200,
+            width: 200,
+            src: imageData,
+          },
+        ]);
+        
+        clearHistoryOnNewAction();
+        setTool("move"); // Reset tool to move after placing image
+        toast.success('Image added to whiteboard!');
+      };
       reader.readAsDataURL(file);
     }
+    // Reset file input
+    event.target.value = null;
   }
 
   const clearHistoryOnNewAction = () => {
@@ -245,36 +280,84 @@ const RoomPage = ({ socket, users }) => {
       setHistory([]);
     }
   };
+  
+  // Cleanup old elements when limit is reached
+  useEffect(() => {
+    if (elements.length > MAX_ELEMENTS) {
+      console.warn('Element limit reached. Removing oldest elements to prevent memory issues.');
+      setElements(prevElements => prevElements.slice(-MAX_ELEMENTS));
+      setHistory([]);
+    }
+    
+    // Check image count separately
+    const imageCount = elements.filter(el => el.type === 'image').length;
+    if (imageCount > MAX_IMAGE_ELEMENTS) {
+      console.warn('Image limit reached. Removing oldest images.');
+      setElements(prevElements => {
+        const images = prevElements.filter(el => el.type === 'image');
+        const nonImages = prevElements.filter(el => el.type !== 'image');
+        const keptImages = images.slice(-MAX_IMAGE_ELEMENTS);
+        return [...nonImages, ...keptImages];
+      });
+      toast.warning(`Image limit reached! Removed ${imageCount - MAX_IMAGE_ELEMENTS} oldest images.`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [elements.length]);
 
   const sendCanvasData = () => {
     if (canvasRef.current && user?.presenter) {
       const canvas = canvasRef.current;
-      const imageData = canvas.toDataURL();
+      // Use JPEG with 0.8 quality instead of PNG to reduce memory usage
+      const imageData = canvas.toDataURL('image/jpeg', 0.8);
       socket.emit("WhiteboardImage", imageData);
     }
   };
 
   function handleTextSubmit() {
-    setElements((prevElements) => [
-      ...prevElements,
-      {
-        type: "text",
-        offsetX: 50,
-        offsetY: 50,
-        text: textInput,
-        color,
-      },
-    ]);
+    if (!textInput.trim()) return; // Don't submit empty text
+
+    if (editingTextIndex !== null) {
+      // Update existing text element
+      setElements((prevElements) =>
+        prevElements.map((el, idx) =>
+          idx === editingTextIndex
+            ? { ...el, text: textInput }
+            : el
+        )
+      );
+      setEditingTextIndex(null);
+    } else {
+      // Create new text element
+      setElements((prevElements) => [
+        ...prevElements,
+        {
+          type: "text",
+          offsetX: 50,
+          offsetY: 50,
+          text: textInput,
+          color,
+        },
+      ]);
+    }
     clearHistoryOnNewAction();
     setTextInput("");
     setIsTextInputOpen(false);
-    setTool("")
+    setTool("move");
   }
 
   function handleCancel() {
     setTextInput("");
     setIsTextInputOpen(false);
-    setTool("")
+    setEditingTextIndex(null);
+    setTool("move");
+  }
+
+  // Handler for double-click on text elements
+  function handleTextDoubleClick(elementIndex, elementText) {
+    setEditingTextIndex(elementIndex);
+    setTextInput(elementText);
+    setIsTextInputOpen(true);
+    setTool("text");
   }
 
   useEffect(() => {
@@ -552,13 +635,23 @@ const RoomPage = ({ socket, users }) => {
             textAlign: "center",
           }}
         >
-          <h3 style={{ marginBottom: "10px", fontSize: "16px" }}>Enter Text</h3>
+          <h3 style={{ marginBottom: "10px", fontSize: "16px" }}>
+            {editingTextIndex !== null ? "Edit Text" : "Enter Text"}
+          </h3>
 
           <input
             type="text"
             value={textInput}
             onChange={(e) => setTextInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                handleTextSubmit();
+              } else if (e.key === "Escape") {
+                handleCancel();
+              }
+            }}
             placeholder="Type your text here"
+            autoFocus
             style={{
               padding: "8px",
               fontSize: "16px",
@@ -610,6 +703,15 @@ const RoomPage = ({ socket, users }) => {
       {isAdmin && (
         <div className="flex items-center justify-center gap-4 p-2 rounded-xl mb-4 toolNav absolute bottom-1">
           <div className="flex gap-4 [&>div]:cursor-pointer">
+            <div
+              data-tooltip-id="move-tool"
+              data-tooltip-content="Move / Select"
+              className={"text-white rounded-md p-3 transition-all duration-200 hover:scale-110 " + (tool === "move" ? "toolShadow" : "")}
+              onClick={() => setTool("move")}
+            >
+              <Move size={20} style={{ stroke: tool === "move" ? "white" : "black" }} />
+            </div>
+
             <div
               data-tooltip-id="pencil-tool"
               data-tooltip-content="Pencil"
@@ -725,12 +827,12 @@ const RoomPage = ({ socket, users }) => {
           </div>
 
           <div
-            className={"image-selector-container relative rounded-md p-2 transition-all duration-200 hover:scale-110 " + (tool === "image" ? "toolShadow" : "")}
+            className={"image-selector-container relative rounded-md p-2 transition-all duration-200 hover:scale-110 " + (showImageSelector ? "toolShadow" : "")}
             data-tooltip-id="image-tool"
             data-tooltip-content="Insert Image"
           >
-            <div onClick={() => { setTool("image"); setShowImageSelector((v) => !v) }} style={{ cursor: "pointer" }}>
-              <Image size={20} style={{ stroke: tool === "image" ? "white" : "black" }} />
+            <div onClick={() => { setShowImageSelector((v) => !v) }} style={{ cursor: "pointer" }}>
+              <Image size={20} style={{ stroke: showImageSelector ? "white" : "black" }} />
             </div>
             {showImageSelector && (
               <div
@@ -793,6 +895,7 @@ const RoomPage = ({ socket, users }) => {
           </div>
 
           {/* Tooltip Components */}
+          <Tooltip id="move-tool" place="top" delayShow={300} events={['hover']} />
           <Tooltip id="pencil-tool" place="top" delayShow={300} events={['hover']} />
           <Tooltip id="line-tool" place="top" delayShow={300} events={['hover']} />
           <Tooltip id="point-tool" place="top" delayShow={300} events={['hover']} />
@@ -808,27 +911,55 @@ const RoomPage = ({ socket, users }) => {
         </div>
       )}
       {isHost && user?.presenter &&
-        <Whiteboard
-          canvasRef={canvasRef}
-          ctxRef={ctxRef}
-          elements={elements}
-          setElements={setElements}
-          clearHistoryOnNewAction={clearHistoryOnNewAction}
-          shouldSendCanvas={shouldSendCanvas}
-          setShouldSendCanvas={setShouldSendCanvas}
-          tool={tool}
-          color={color}
-          fontSize={fontSize}
-          fontFamily={fontFamily}
-          backgroundColor={backgroundColor}
-          image={image}
-          setColor={setColor}
-          socket={socket}
-          user={user}
-          sendCanvasData={sendCanvasData}
-          selectedElements={selectedElements}
-          setSelectedElements={setSelectedElements}
-        />
+        <>
+          <Whiteboard
+            canvasRef={canvasRef}
+            ctxRef={ctxRef}
+            elements={elements}
+            setElements={setElements}
+            clearHistoryOnNewAction={clearHistoryOnNewAction}
+            shouldSendCanvas={shouldSendCanvas}
+            setShouldSendCanvas={setShouldSendCanvas}
+            tool={tool}
+            color={color}
+            fontSize={fontSize}
+            fontFamily={fontFamily}
+            backgroundColor={backgroundColor}
+            image={image}
+            setColor={setColor}
+            socket={socket}
+            user={user}
+            sendCanvasData={sendCanvasData}
+            selectedElements={selectedElements}
+            setSelectedElements={setSelectedElements}
+            onTextDoubleClick={handleTextDoubleClick}
+          />
+          
+          {/* Memory usage indicator - Enhanced with image count */}
+          {(elements.length > MAX_ELEMENTS * 0.8 || elements.filter(el => el.type === 'image').length > MAX_IMAGE_ELEMENTS * 0.7) && (
+            <div style={{
+              position: 'fixed',
+              top: '20px',
+              right: '20px',
+              backgroundColor: elements.length > MAX_ELEMENTS * 0.9 || elements.filter(el => el.type === 'image').length > MAX_IMAGE_ELEMENTS * 0.9 ? '#ff4444' : '#ffaa00',
+              color: 'white',
+              padding: '12px 16px',
+              borderRadius: '8px',
+              fontSize: '12px',
+              fontWeight: 'bold',
+              zIndex: 1000,
+              boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+              minWidth: '200px'
+            }}>
+              <div style={{ marginBottom: '4px' }}>
+                ⚠️ Elements: {elements.length}/{MAX_ELEMENTS}
+              </div>
+              <div style={{ fontSize: '11px', opacity: 0.9 }}>
+                📷 Images: {elements.filter(el => el.type === 'image').length}/{MAX_IMAGE_ELEMENTS}
+              </div>
+            </div>
+          )}
+        </>
       }
 
       {!user?.presenter &&
