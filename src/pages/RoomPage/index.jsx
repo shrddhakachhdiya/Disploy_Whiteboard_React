@@ -4,7 +4,7 @@ import Chat from "../../components/ChatBar";
 import "./index.css";
 import { toast, ToastContainer } from "react-toastify";
 import UserWhiteBoard from "../../components/Whiteboard/UserWhiteBoard";
-import { Pencil, LineSquiggle, CircleSmall, CaseUpper, RectangleHorizontal, Circle, Image, PaintBucket, Undo, Redo, Eraser, MessageCircle, HelpCircle, Move, Minus, Plus } from 'lucide-react';
+import { Pencil, LineSquiggle, CircleSmall, CaseUpper, RectangleHorizontal, Circle, Image, PaintBucket, Undo, Redo, Eraser, MessageCircle, HelpCircle, Move, Minus, Plus, Download } from 'lucide-react';
 import { useParams, useSearchParams } from "react-router-dom";
 import { v4 as uuidv4 } from 'uuid'
 import axios from "axios";
@@ -172,6 +172,43 @@ const RoomPage = ({ socket, users }) => {
     setHistory([]);
     setSelectedElements([]);
     setTool("move");
+  }
+
+  function handleDownload() {
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      toast.error('Canvas not found!');
+      return;
+    }
+
+    try {
+      // Create a temporary canvas with white background
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = canvas.width;
+      tempCanvas.height = canvas.height;
+      const tempCtx = tempCanvas.getContext('2d');
+      
+      tempCtx.fillStyle = '#FFFFFF';
+      tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+      
+      tempCtx.drawImage(canvas, 0, 0);
+      
+      const dataURL = tempCanvas.toDataURL('image/png');
+      
+      const link = document.createElement('a');
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      link.download = `whiteboard-${timestamp}.png`;
+      link.href = dataURL;
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      toast.success('Whiteboard downloaded successfully!');
+    } catch (error) {
+      console.error('Download error:', error);
+      toast.error('Failed to download whiteboard');
+    }
   }
 
   function handleUndo() {
@@ -930,6 +967,14 @@ const RoomPage = ({ socket, users }) => {
             >
               <Redo size={20} />
             </button>
+            <button
+              className="download rounded-md p-2 cursor-pointer transition-all duration-200 hover:scale-110 bg-green-500 hover:bg-green-600"
+              onClick={handleDownload}
+              data-tooltip-id="download-tool"
+              data-tooltip-content="Download as PNG"
+            >
+              <Download size={20} style={{ stroke: "white" }} />
+            </button>
           </div>
 
           <div>
@@ -958,6 +1003,7 @@ const RoomPage = ({ socket, users }) => {
           <Tooltip id="image-tool" place="top" delayShow={300} events={['hover']} />
           <Tooltip id="undo-tool" place="top" delayShow={300} events={['hover']} />
           <Tooltip id="redo-tool" place="top" delayShow={300} events={['hover']} />
+          <Tooltip id="download-tool" place="top" delayShow={300} events={['hover']} />
           <Tooltip id="clear-tool" place="top" delayShow={300} events={['hover']} />
         </div>
       )}
