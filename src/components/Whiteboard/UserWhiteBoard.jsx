@@ -127,7 +127,9 @@ function UserWhiteBoard({ socket, user, ctxRef, elements, setElements, color, se
                 }
             } else if (element.type === "text") {
                 ctx.fillStyle = element.color;
-                ctx.font = "20px Arial";
+                const textFontSize = element.fontSize || 20;
+                const textFontFamily = element.fontFamily || "Arial";
+                ctx.font = `${textFontSize}px ${textFontFamily}`;
                 ctx.fillText(element.text, element.offsetX, element.offsetY);
             }
         });

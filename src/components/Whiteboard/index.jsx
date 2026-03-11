@@ -14,6 +14,8 @@ const Whiteboard = ({
   setShouldSendCanvas,
   tool,
   color,
+  fontSize,
+  fontFamily,
   user,
   socket,
   sendCanvasData,
@@ -24,7 +26,6 @@ const Whiteboard = ({
 
   const [img, setImg] = useState(null);
   const [isDrawing, setIsDrawing] = useState(false);
-  const [textInput, setTextInput] = useState("");
   const [dragging, setDragging] = useState(false);
   const [draggedElementIndex, setDraggedElementIndex] = useState(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
@@ -203,7 +204,9 @@ const Whiteboard = ({
         }
       } else if (element.type === "text") {
         ctx.fillStyle = element.color;
-        ctx.font = "20px Arial";
+        const textFontSize = element.fontSize || 20;
+        const textFontFamily = element.fontFamily || "Arial";
+        ctx.font = `${textFontSize}px ${textFontFamily}`;
         ctx.fillText(element.text, element.offsetX, element.offsetY);
       }
 
@@ -616,19 +619,6 @@ const Whiteboard = ({
         },
       ]);
       clearHistoryOnNewAction();
-    } else if (tool === "text") {
-      setElements((prevElements) => [
-        ...prevElements,
-        {
-          type: "text",
-          offsetX,
-          offsetY,
-          text: textInput,
-          color,
-        },
-      ]);
-      clearHistoryOnNewAction();
-      setTextInput("");
     } else if (tool === "eraser") {
       let elementToErase = -1;
       for (let i = elements.length - 1; i >= 0; i--) {

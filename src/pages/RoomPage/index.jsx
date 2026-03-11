@@ -4,7 +4,7 @@ import Chat from "../../components/ChatBar";
 import "./index.css";
 import { toast, ToastContainer } from "react-toastify";
 import UserWhiteBoard from "../../components/Whiteboard/UserWhiteBoard";
-import { Pencil, LineSquiggle, CircleSmall, CaseUpper, RectangleHorizontal, Circle, Image, PaintBucket, Undo, Redo, Eraser, MessageCircle, HelpCircle, Move } from 'lucide-react';
+import { Pencil, LineSquiggle, CircleSmall, CaseUpper, RectangleHorizontal, Circle, Image, PaintBucket, Undo, Redo, Eraser, MessageCircle, HelpCircle, Move, Minus, Plus } from 'lucide-react';
 import { useParams, useSearchParams } from "react-router-dom";
 import { v4 as uuidv4 } from 'uuid'
 import axios from "axios";
@@ -317,11 +317,11 @@ const RoomPage = ({ socket, users }) => {
     if (!textInput.trim()) return; // Don't submit empty text
 
     if (editingTextIndex !== null) {
-      // Update existing text element
+      // Update existing text element with new text, fontSize, fontFamily, and color
       setElements((prevElements) =>
         prevElements.map((el, idx) =>
           idx === editingTextIndex
-            ? { ...el, text: textInput }
+            ? { ...el, text: textInput, fontSize, fontFamily, color }
             : el
         )
       );
@@ -336,6 +336,8 @@ const RoomPage = ({ socket, users }) => {
           offsetY: 50,
           text: textInput,
           color,
+          fontSize,
+          fontFamily,
         },
       ]);
     }
@@ -631,13 +633,17 @@ const RoomPage = ({ socket, users }) => {
             borderRadius: "8px",
             padding: "20px",
             boxShadow: "0 4px 6px rgba(0, 0, 0, 0.1)",
-            width: "300px",
+            width: "350px",
             textAlign: "center",
           }}
         >
           <h3 style={{ marginBottom: "10px", fontSize: "16px" }}>
             {editingTextIndex !== null ? "Edit Text" : "Enter Text"}
           </h3>
+          
+          <div style={{ marginBottom: "10px", fontSize: "12px", color: "#666" }}>
+            Font Size: <strong>{fontSize}px</strong> | Color: <span style={{ color: color }}>■</span>
+          </div>
 
           <input
             type="text"
@@ -662,6 +668,28 @@ const RoomPage = ({ socket, users }) => {
               boxSizing: "border-box",
             }}
           />
+          
+          {/* Preview */}
+          {textInput && (
+            <div style={{ 
+              marginBottom: "10px", 
+              padding: "10px", 
+              backgroundColor: "#f5f5f5", 
+              borderRadius: "4px",
+              minHeight: "40px"
+            }}>
+              <div style={{ fontSize: "11px", color: "#888", marginBottom: "5px" }}>Preview:</div>
+              <div style={{ 
+                fontSize: `${fontSize}px`, 
+                fontFamily: fontFamily,
+                color: color,
+                wordBreak: "break-word"
+              }}>
+                {textInput}
+              </div>
+            </div>
+          )}
+          
           <div>
             <button
               onClick={handleTextSubmit}
@@ -746,6 +774,27 @@ const RoomPage = ({ socket, users }) => {
               onClick={() => { setTool("text"); setIsTextInputOpen(true) }}
             >
               <CaseUpper size={20} style={{ stroke: tool === "text" ? "white" : "black" }} />
+            </div>
+
+            {/* Text Size Controls */}
+            <div className="flex items-center gap-1 bg-gray-200 rounded-md px-2 border border-gray-300">
+              <button
+                data-tooltip-id="decrease-font"
+                data-tooltip-content="Decrease Text Size"
+                className="p-2 hover:bg-gray-300 rounded transition-all"
+                onClick={() => setFontSize(prev => Math.max(8, prev - 2))}
+              >
+                <Minus size={16} style={{ stroke: "#333" }} />
+              </button>
+              <span className="text-xs font-bold text-gray-800 min-w-[35px] text-center">{fontSize}px</span>
+              <button
+                data-tooltip-id="increase-font"
+                data-tooltip-content="Increase Text Size"
+                className="p-2 hover:bg-gray-300 rounded transition-all"
+                onClick={() => setFontSize(prev => Math.min(72, prev + 2))}
+              >
+                <Plus size={16} style={{ stroke: "#333" }} />
+              </button>
             </div>
 
             <div 
@@ -900,6 +949,8 @@ const RoomPage = ({ socket, users }) => {
           <Tooltip id="line-tool" place="top" delayShow={300} events={['hover']} />
           <Tooltip id="point-tool" place="top" delayShow={300} events={['hover']} />
           <Tooltip id="text-tool" place="top" delayShow={300} events={['hover']} />
+          <Tooltip id="decrease-font" place="top" delayShow={300} events={['hover']} />
+          <Tooltip id="increase-font" place="top" delayShow={300} events={['hover']} />
           <Tooltip id="rect-tool" place="top" delayShow={300} events={['hover']} />
           <Tooltip id="circle-tool" place="top" delayShow={300} events={['hover']} />
           <Tooltip id="eraser-tool" place="top" delayShow={300} events={['hover']} />
