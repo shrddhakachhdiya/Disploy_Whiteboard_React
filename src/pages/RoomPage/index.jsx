@@ -153,7 +153,6 @@ const RoomPage = ({ socket, users }) => {
   const [editingTextIndex, setEditingTextIndex] = useState(null); // Track which text element is being edited
   const [chat, setChat] = useState([])
   const [showColorPicker, setShowColorPicker] = useState(false);
-  const [showImageSelector, setShowImageSelector] = useState(false);
   const [selectedElements, setSelectedElements] = useState([]);
   const [shouldSendCanvas, setShouldSendCanvas] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -163,6 +162,7 @@ const RoomPage = ({ socket, users }) => {
   const canvasRef = useRef(null);
   const ctxRef = useRef(null);
   const userBarRef = useRef(null);
+  const imageInputRef = useRef(null);
 
   function handleClear() {
     const canvas = canvasRef.current;
@@ -446,23 +446,19 @@ const RoomPage = ({ socket, users }) => {
         setShowColorPicker(false);
         setTool("pencil")
       }
-      if (showImageSelector && !event.target.closest('.image-selector-container')) {
-        setShowImageSelector(false);
-        setTool("pencil")
-      }
       if (showHelp && !event.target.closest('.help-overlay')) {
         setShowHelp(false);
       }
     };
 
-    if (showColorPicker || showImageSelector || showHelp) {
+    if (showColorPicker || showHelp) {
       document.addEventListener('mousedown', handleClickOutside);
     }
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showColorPicker, showImageSelector, showHelp]);
+  }, [showColorPicker, showHelp]);
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -677,9 +673,52 @@ const RoomPage = ({ socket, users }) => {
           <h3 style={{ marginBottom: "10px", fontSize: "16px" }}>
             {editingTextIndex !== null ? "Edit Text" : "Enter Text"}
           </h3>
+          <div className="flex gap-4 items-center justify-center ">
+          {/* Text Size Controls */}
+          <div style={{ marginBottom: "15px", display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}>
+            <label style={{ fontSize: "12px", color: "#666", fontWeight: "500" }}>Font Size:</label>
+            <div style={{ display: "flex", alignItems: "center", gap: "5px", border: "1px solid #ddd", borderRadius: "6px", padding: "4px 8px", backgroundColor: "#f9f9f9" }}>
+              <button
+                onClick={() => setFontSize(prev => Math.max(8, prev - 2))}
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: "4px",
+                  display: "flex",
+                  alignItems: "center",
+                  borderRadius: "4px",
+                }}
+                onMouseEnter={(e) => e.target.style.backgroundColor = "#e0e0e0"}
+                onMouseLeave={(e) => e.target.style.backgroundColor = "transparent"}
+              >
+                <Minus size={16} style={{ stroke: "#333" }} />
+              </button>
+              <span style={{ fontSize: "14px", fontWeight: "bold", minWidth: "35px", textAlign: "center", color: "#333" }}>
+                {fontSize}px
+              </span>
+              <button
+                onClick={() => setFontSize(prev => Math.min(72, prev + 2))}
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: "4px",
+                  display: "flex",
+                  alignItems: "center",
+                  borderRadius: "4px",
+                }}
+                onMouseEnter={(e) => e.target.style.backgroundColor = "#e0e0e0"}
+                onMouseLeave={(e) => e.target.style.backgroundColor = "transparent"}
+              >
+                <Plus size={16} style={{ stroke: "#333" }} />
+              </button>
+            </div>
+          </div>
           
           <div style={{ marginBottom: "10px", fontSize: "12px", color: "#666" }}>
-            Font Size: <strong>{fontSize}px</strong> | Color: <span style={{ color: color }}>■</span>
+            Color: <span style={{ color: color }}>■</span>
+          </div>
           </div>
 
           <input
@@ -813,27 +852,6 @@ const RoomPage = ({ socket, users }) => {
               <CaseUpper size={20} style={{ stroke: tool === "text" ? "white" : "black" }} />
             </div>
 
-            {/* Text Size Controls */}
-            <div className="flex items-center gap-1 bg-gray-200 rounded-md px-2 border border-gray-300">
-              <button
-                data-tooltip-id="decrease-font"
-                data-tooltip-content="Decrease Text Size"
-                className="p-2 hover:bg-gray-300 rounded transition-all"
-                onClick={() => setFontSize(prev => Math.max(8, prev - 2))}
-              >
-                <Minus size={16} style={{ stroke: "#333" }} />
-              </button>
-              <span className="text-xs font-bold text-gray-800 min-w-[35px] text-center">{fontSize}px</span>
-              <button
-                data-tooltip-id="increase-font"
-                data-tooltip-content="Increase Text Size"
-                className="p-2 hover:bg-gray-300 rounded transition-all"
-                onClick={() => setFontSize(prev => Math.min(72, prev + 2))}
-              >
-                <Plus size={16} style={{ stroke: "#333" }} />
-              </button>
-            </div>
-
             <div 
               data-tooltip-id="rect-tool"
               data-tooltip-content="Rectangle"
@@ -913,40 +931,24 @@ const RoomPage = ({ socket, users }) => {
           </div>
 
           <div
-            className={"image-selector-container relative rounded-md p-2 transition-all duration-200 hover:scale-110 " + (showImageSelector ? "toolShadow" : "")}
+            className={"image-selector-container relative rounded-md p-2 transition-all duration-200 hover:scale-110 cursor-pointer"}
             data-tooltip-id="image-tool"
             data-tooltip-content="Insert Image"
+            onClick={() => imageInputRef.current?.click()}
           >
-            <div onClick={() => { setShowImageSelector((v) => !v) }} style={{ cursor: "pointer" }}>
-              <Image size={20} style={{ stroke: showImageSelector ? "white" : "black" }} />
-            </div>
-            {showImageSelector && (
-              <div
-                className="absolute bottom-9 left-0 w-[200px] z-50 bg-white p-4 rounded shadow-lg border"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="text-center">
-                  <h4 className="text-sm font-medium mb-3 text-gray-700">Select Image</h4>
-                  <label
-                    htmlFor="image-upload"
-                    className="block w-full p-3 bg-blue-500 text-white rounded cursor-pointer hover:bg-blue-600 transition-colors"
-                  >
-                    📁 Choose File
-                  </label>
-                  <input
-                    id="image-upload"
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => {
-                      handleImageSelect(e);
-                      setShowImageSelector(false);
-                    }}
-                    className="hidden"
-                  />
-                </div>
-              </div>
-            )}
+            <Image size={20} style={{ stroke: "black" }} />
           </div>
+          
+          {/* Hidden file input for image upload */}
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/*"
+            onChange={(e) => {
+              handleImageSelect(e);
+            }}
+            style={{ display: 'none' }}
+          />
 
           <div className="flex items-center gap-2">
             <button
@@ -994,8 +996,6 @@ const RoomPage = ({ socket, users }) => {
           <Tooltip id="line-tool" place="top" delayShow={300} events={['hover']} />
           <Tooltip id="point-tool" place="top" delayShow={300} events={['hover']} />
           <Tooltip id="text-tool" place="top" delayShow={300} events={['hover']} />
-          <Tooltip id="decrease-font" place="top" delayShow={300} events={['hover']} />
-          <Tooltip id="increase-font" place="top" delayShow={300} events={['hover']} />
           <Tooltip id="rect-tool" place="top" delayShow={300} events={['hover']} />
           <Tooltip id="circle-tool" place="top" delayShow={300} events={['hover']} />
           <Tooltip id="eraser-tool" place="top" delayShow={300} events={['hover']} />
