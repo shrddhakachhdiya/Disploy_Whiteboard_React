@@ -282,29 +282,90 @@ const RoomPage = ({ socket, users }) => {
   function handleImageSelect(event) {
     const file = event.target.files[0];
     if (file) {
+      const isVideo = file.type.startsWith('video/');
+      const isImage = file.type.startsWith('image/');
+      
+      if (!isVideo && !isImage) {
+        toast.error('Please select an image or video file');
+        return;
+      }
+      
       const reader = new FileReader();
       reader.onloadend = () => {
-        const imageData = reader.result;
+        const mediaData = reader.result;
         
-        // Automatically add image to whiteboard at center
-        const centerX = window.innerWidth / 2 - 100;
-        const centerY = window.innerHeight / 2 - 100;
-        
-        setElements((prevElements) => [
-          ...prevElements,
-          {
-            type: "image",
-            offsetX: centerX,
-            offsetY: centerY,
-            height: 200,
-            width: 200,
-            src: imageData,
-          },
-        ]);
-        
-        clearHistoryOnNewAction();
-        setTool("move"); // Reset tool to move after placing image
-        toast.success('Image added to whiteboard!');
+        if (isVideo) {
+          // Video: use fixed size
+          const centerX = window.innerWidth / 2 - 100;
+          const centerY = window.innerHeight / 2 - 100;
+          
+          setElements((prevElements) => [
+            ...prevElements,
+            {
+              type: "video",
+              offsetX: centerX,
+              offsetY: centerY,
+              height: 200,
+              width: 200,
+              src: mediaData,
+            },
+          ]);
+          
+          clearHistoryOnNewAction();
+          setTool("move");
+          toast.success('Video added to whiteboard!');
+        } else {
+          // Image: maintain aspect ratio
+          const tempImg = document.createElement('img');
+          tempImg.onload = () => {
+            const naturalWidth = tempImg.naturalWidth;
+            const naturalHeight = tempImg.naturalHeight;
+            const aspectRatio = naturalWidth / naturalHeight;
+            const maxSize = 300; // Maximum dimension
+            let displayWidth, displayHeight;
+            
+            if (naturalWidth > naturalHeight) {
+              // Landscape
+              displayWidth = maxSize;
+              displayHeight = maxSize / aspectRatio;
+            } else {
+              // Portrait or Square
+              displayHeight = maxSize;
+              displayWidth = maxSize * aspectRatio;
+            }
+            
+            const centerX = window.innerWidth / 2 - displayWidth / 2;
+            const centerY = window.innerHeight / 2 - displayHeight / 2;
+            
+            console.log('Adding image with dimensions:', { displayWidth, displayHeight, naturalWidth, naturalHeight });
+            
+            setElements((prevElements) => {
+              const newElements = [
+                ...prevElements,
+                {
+                  type: "image",
+                  offsetX: centerX,
+                  offsetY: centerY,
+                  height: displayHeight,
+                  width: displayWidth,
+                  src: mediaData,
+                },
+              ];
+              return newElements;
+            });
+            
+            clearHistoryOnNewAction();
+            setTool("move");
+            toast.success('Image added to whiteboard!');
+          };
+          
+          tempImg.onerror = (error) => {
+            console.error('Failed to load image:', error);
+            toast.error('Failed to load image. Please try again.');
+          };
+          
+          tempImg.src = mediaData;
+        }
       };
       reader.readAsDataURL(file);
     }
@@ -805,7 +866,7 @@ const RoomPage = ({ socket, users }) => {
       }
 
       {isAdmin && (
-        <div className="flex items-center justify-center gap-4 p-2 rounded-xl mb-4 toolNav absolute bottom-1">
+        <div className="flex items-center justify-center gap-4 p-2 rounded-xl mb-4 toolNav absolute bottom-1" style={{ zIndex: 1000 }}>
           <div className="flex gap-4 [&>div]:cursor-pointer">
             <div
               data-tooltip-id="move-tool"
@@ -933,17 +994,17 @@ const RoomPage = ({ socket, users }) => {
           <div
             className={"image-selector-container relative rounded-md p-2 transition-all duration-200 hover:scale-110 cursor-pointer"}
             data-tooltip-id="image-tool"
-            data-tooltip-content="Insert Image"
+            data-tooltip-content="Insert Image/Video"
             onClick={() => imageInputRef.current?.click()}
           >
             <Image size={20} style={{ stroke: "black" }} />
           </div>
           
-          {/* Hidden file input for image upload */}
+          {/* Hidden file input for image/video upload */}
           <input
             ref={imageInputRef}
             type="file"
-            accept="image/*"
+            accept="image/*,video/*"
             onChange={(e) => {
               handleImageSelect(e);
             }}

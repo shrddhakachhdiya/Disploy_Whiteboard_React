@@ -108,13 +108,8 @@ function UserWhiteBoard({ socket, user, ctxRef, elements, setElements, color, se
                     imageObj.src = element.src;
                     imageObj.onload = () => {
                         imagesCache.current[element.src] = imageObj;
-                        ctx.drawImage(
-                            imageObj,
-                            element.offsetX,
-                            element.offsetY,
-                            element.width,
-                            element.height
-                        );
+                        // Force re-render to display the newly loaded image
+                        setElements(prevElements => [...prevElements]);
                     };
                 } else {
                     ctx.drawImage(
@@ -137,10 +132,39 @@ function UserWhiteBoard({ socket, user, ctxRef, elements, setElements, color, se
 
     return (
         <div
-            style={{ height: "100vh", width: "100vw", overflow: "hidden" }}
+            style={{ height: "100vh", width: "100vw", overflow: "hidden", position: "relative", backgroundColor: "white" }}
             className={`shadow-lg ${!user?.presenter ? "pointer-events-none" : ""}`}
         >
-            <canvas className="bg-white" ref={canvasRef}></canvas>
+            <canvas 
+                ref={canvasRef}
+                style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    zIndex: 2,
+                    backgroundColor: 'transparent'
+                }}
+            ></canvas>
+            
+            {/* Render video elements */}
+            {elements.filter(el => el.type === 'video').map((element, index) => (
+                <video
+                    key={`video-${index}`}
+                    src={element.src}
+                    autoPlay
+                    loop
+                    muted
+                    style={{
+                        position: 'absolute',
+                        left: `${element.offsetX}px`,
+                        top: `${element.offsetY}px`,
+                        width: `${Math.abs(element.width)}px`,
+                        height: `${Math.abs(element.height)}px`,
+                        pointerEvents: 'none',
+                        zIndex: 1,
+                    }}
+                />
+            ))}
         </div>
     );
 }

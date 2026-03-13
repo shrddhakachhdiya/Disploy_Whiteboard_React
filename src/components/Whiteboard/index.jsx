@@ -927,7 +927,9 @@ const Whiteboard = ({
         height: "100vh",
         width: "100vw",
         overflow: "hidden",
-        cursor: cursor
+        position: "relative",
+        cursor: cursor,
+        backgroundColor: "white"
       }}
       className={`shadow-lg ${!user?.presenter ? "pointer-events-none" : ""}`}
       onMouseDown={handleMouseDown}
@@ -936,12 +938,47 @@ const Whiteboard = ({
       onDoubleClick={handleDoubleClick}
     >
       <canvas
-        className={`bg-white ${cursor.startsWith('cursor-') ? cursor : ''}`}
+        className={cursor.startsWith('cursor-') ? cursor : ''}
         style={{
-          cursor: cursor.startsWith('cursor-') ? undefined : cursor
+          cursor: cursor.startsWith('cursor-') ? undefined : cursor,
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          zIndex: 2,
+          backgroundColor: 'transparent'
         }}
         ref={canvasRef}
       ></canvas>
+      
+      {/* Render video elements */}
+      {elements.filter(el => el.type === 'video').map((element, index) => {
+        const isSelected = selectedElements && selectedElements.some(selectedEl =>
+          selectedEl.offsetX === element.offsetX &&
+          selectedEl.offsetY === element.offsetY &&
+          selectedEl.type === element.type
+        );
+        
+        return (
+          <video
+            key={`video-${index}`}
+            src={element.src}
+            autoPlay
+            loop
+            muted
+            style={{
+              position: 'absolute',
+              left: `${element.offsetX}px`,
+              top: `${element.offsetY}px`,
+              width: `${Math.abs(element.width)}px`,
+              height: `${Math.abs(element.height)}px`,
+              pointerEvents: 'none',
+              border: isSelected ? '2px dashed #007acc' : 'none',
+              boxShadow: isSelected ? '0 0 0 3px rgba(0, 122, 204, 0.2)' : 'none',
+              zIndex: 1,
+            }}
+          />
+        );
+      })}
     </div>
   );
 };
