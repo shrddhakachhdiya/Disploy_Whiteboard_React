@@ -50,6 +50,7 @@ function UserWhiteBoard({ socket, user, ctxRef, elements, setElements, color, se
         let imagesToLoad = 0;
 
         elements.forEach((element) => {
+            console.log("🚀 ~ UserWhiteBoard ~ element:", element)
             if (element.type === "line") {
                 roughCanvas.draw(
                     roughGenerator.line(

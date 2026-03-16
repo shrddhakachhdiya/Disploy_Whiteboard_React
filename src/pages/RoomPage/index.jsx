@@ -103,13 +103,9 @@ const RoomPage = ({ socket, users }) => {
   }, [isHost])
 
   const handleAllUsers = (data) => {
-    console.log("🚀 ~ handleAllUsers ~ user:", data)
     const host = data.some(user => user.host === true);
-    console.log("🚀 ~ handleAllUsers ~ host:", host)
     if (!host) {
-      console.log(`⚠️ No host found in room ${roomid}. Redirecting to homepage...`);
       if (user && user?.id) {
-        console.log("🚀 ~ handleAllUsers ~ user before code removal:", user)
         const UserCode = user?.id
         axios.post('https://back.disploy.com/api/WhiteBoardMaster/RemoveWhiteBoardScreenCode', {
           code: UserCode
@@ -120,7 +116,7 @@ const RoomPage = ({ socket, users }) => {
         });
       }
     } else {
-      setUsers(data)
+      // setUsers(data)
     }
   }
 
@@ -141,6 +137,8 @@ const RoomPage = ({ socket, users }) => {
   const MAX_ELEMENTS = 10000; // Increased from 5000
   const MAX_HISTORY = 100;
   const MAX_IMAGE_ELEMENTS = 100; // Maximum number of images allowed
+  const MAX_IMAGE_UPLOAD_MB = 8;
+  const MAX_VIDEO_UPLOAD_MB = 20;
 
   const [fontSize, setFontSize] = useState(16);
   const [fontFamily, setFontFamily] = useState("Arial");
@@ -289,12 +287,20 @@ const RoomPage = ({ socket, users }) => {
         toast.error('Please select an image or video file');
         return;
       }
+
+      const maxBytes = (isVideo ? MAX_VIDEO_UPLOAD_MB : MAX_IMAGE_UPLOAD_MB) * 1024 * 1024;
+      if (file.size > maxBytes) {
+        toast.error(`File is too large. Max ${isVideo ? MAX_VIDEO_UPLOAD_MB : MAX_IMAGE_UPLOAD_MB}MB allowed.`);
+        event.target.value = null;
+        return;
+      }
       
       const reader = new FileReader();
       reader.onloadend = () => {
         const mediaData = reader.result;
         
         if (isVideo) {
+          console.log("🚀 ~ handleImageSelect ~ isVideo:", isVideo)
           // Video: use fixed size
           const centerX = window.innerWidth / 2 - 100;
           const centerY = window.innerHeight / 2 - 100;
