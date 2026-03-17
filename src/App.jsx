@@ -12,13 +12,15 @@ import { useCallback } from "react"
 
 //start both nodemon server.js and yarn run dev on diff terminals to start this
 
-const server = "https://disploy-whiteboard-node-nyxk.onrender.com";
-// const server = "http://192.168.29.119:5000";
+const server = import.meta.env.VITE_SOCKET_SERVER_URL || (window.location.hostname === "localhost"
+  ? "http://localhost:5000"
+  : "https://disploy-whiteboard-node-nyxk.onrender.com");
 
 const connectionOptions = {
   reconnection: true,
   reconnectionAttempts: Infinity,
   timeout: 20000,
+  transports: ["websocket"],
 };
 
 
@@ -58,26 +60,35 @@ function App() {
   }, []);
 
 
-  const handleRoomJoined = (data) => {
+  const handleRoomJoined = useCallback((data) => {
     if (data.success) {
       setUsers(data.users)
     }
     else {
       console.log("something went wrong")
     }
-  }
+  }, [])
 
   // const handleUserJoinedMessage = useCallback((data) => {
   //   toast.info(`${data} joined the room`)
   // }, [])
 
   const handleUserLeftMessage = useCallback((data) => {
-    toast.info(`${data.name} left the room`)
+    const leftUserName = data?.name || "A user"
+    toast.info(`${leftUserName} left the room`)
+
+    if (data?.userId) {
+      setUsers((prevUsers) => prevUsers.filter((usr) => usr.userId !== data.userId))
+    }
   }, [])
 
   const handleNoHostAvailable = useCallback((data) => {
     console.log("🚀 ~ handleNoHostAvailable ~ data:", data)
     toast.info(`${data.message}`)
+  }, [])
+
+  const handleAllUsers = useCallback((data) => {
+    setUsers(Array.isArray(data) ? data : [])
   }, [])
 
   const fetchUserDetails = (data) => {
@@ -89,6 +100,7 @@ function App() {
   useEffect(() => {
     // socket.on("userLeftMessageBroadcasted", fetchUserDetails)
     socket.on("room-joined", handleRoomJoined)
+    socket.on("allUsers", handleAllUsers)
     // socket.on("userJoinedMessageBroadcasted", handleUserJoinedMessage)
     socket.on("userLeftMessageBroadcasted", handleUserLeftMessage)
     socket.on("no-host-available", handleNoHostAvailable)
@@ -96,11 +108,12 @@ function App() {
     // Cleanup function to remove event listeners
     return () => {
       socket.off("room-joined", handleRoomJoined)
+      socket.off("allUsers", handleAllUsers)
       // socket.off("userJoinedMessageBroadcasted", handleUserJoinedMessage)
       socket.off("userLeftMessageBroadcasted", handleUserLeftMessage)
       socket.off("no-host-available", handleNoHostAvailable)
     }
-  }, [])
+  }, [handleAllUsers, handleNoHostAvailable, handleRoomJoined, handleUserLeftMessage])
 
   return (
     <>
@@ -110,7 +123,7 @@ function App() {
         {/* <Route path="/" element={<LandingPage/>}/> */}
         <Route path="/" element={<CreateRoom socket={socket} setUser={setUser} />} />
         <Route path="/join-room" element={<JoinRoom socket={socket} setUser={setUser} />} />
-        <Route path="/:roomid" element={<RoomPage user={user} socket={socket} users={users} />} />
+        <Route path="/:roomid" element={<RoomPage user={user} socket={socket} users={users} setUsers={setUsers} />} />
       </Routes>
     </>
   )

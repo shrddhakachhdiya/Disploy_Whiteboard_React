@@ -155,6 +155,8 @@ function UserWhiteBoard({ socket, user, ctxRef, elements, setElements, color, se
                     autoPlay
                     loop
                     muted
+                    playsInline
+                    preload="metadata"
                     style={{
                         position: 'absolute',
                         left: `${element.offsetX}px`,

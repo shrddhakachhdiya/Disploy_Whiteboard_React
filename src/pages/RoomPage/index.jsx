@@ -13,7 +13,7 @@ import "react-tooltip/dist/react-tooltip.css";
 
 
 
-const RoomPage = ({ socket, users }) => {
+const RoomPage = ({ socket, users, setUsers }) => {
   const [searchParams] = useSearchParams();
   const { roomid } = useParams()
 
@@ -103,7 +103,10 @@ const RoomPage = ({ socket, users }) => {
   }, [isHost])
 
   const handleAllUsers = (data) => {
-    const host = data.some(user => user.host === true);
+    const nextUsers = Array.isArray(data) ? data : [];
+    setUsers(nextUsers);
+
+    const host = nextUsers.some(user => user.host === true);
     if (!host) {
       if (user && user?.id) {
         const UserCode = user?.id
@@ -116,7 +119,7 @@ const RoomPage = ({ socket, users }) => {
         });
       }
     } else {
-      // setUsers(data)
+      // users list is already synced by setUsers above
     }
   }
 
@@ -138,7 +141,7 @@ const RoomPage = ({ socket, users }) => {
   const MAX_HISTORY = 100;
   const MAX_IMAGE_ELEMENTS = 100; // Maximum number of images allowed
   const MAX_IMAGE_UPLOAD_MB = 8;
-  const MAX_VIDEO_UPLOAD_MB = 20;
+  const MAX_VIDEO_UPLOAD_MB = 4;
 
   const [fontSize, setFontSize] = useState(16);
   const [fontFamily, setFontFamily] = useState("Arial");

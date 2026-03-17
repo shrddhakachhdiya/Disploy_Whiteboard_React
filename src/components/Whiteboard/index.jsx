@@ -965,6 +965,8 @@ const Whiteboard = ({
             autoPlay
             loop
             muted
+            playsInline
+            preload="metadata"
             style={{
               position: 'absolute',
               left: `${element.offsetX}px`,
