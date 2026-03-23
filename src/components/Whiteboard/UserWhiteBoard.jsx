@@ -50,7 +50,6 @@ function UserWhiteBoard({ socket, user, ctxRef, elements, setElements, color, se
         let imagesToLoad = 0;
 
         elements.forEach((element) => {
-            console.log("🚀 ~ UserWhiteBoard ~ element:", element)
             if (element.type === "line") {
                 roughCanvas.draw(
                     roughGenerator.line(
@@ -103,6 +102,11 @@ function UserWhiteBoard({ socket, user, ctxRef, elements, setElements, color, se
                 ctx.fillStyle = element.color;
                 ctx.fill();
             } else if (element.type === "image") {
+                const drawX = Math.min(element.offsetX, element.offsetX + element.width);
+                const drawY = Math.min(element.offsetY, element.offsetY + element.height);
+                const drawWidth = Math.abs(element.width);
+                const drawHeight = Math.abs(element.height);
+
                 if (!imagesCache.current[element.src]) {
                     imagesToLoad++;
                     const imageObj = new Image();
@@ -115,10 +119,10 @@ function UserWhiteBoard({ socket, user, ctxRef, elements, setElements, color, se
                 } else {
                     ctx.drawImage(
                         imagesCache.current[element.src],
-                        element.offsetX,
-                        element.offsetY,
-                        element.width,
-                        element.height
+                        drawX,
+                        drawY,
+                        drawWidth,
+                        drawHeight
                     );
                 }
             } else if (element.type === "text") {
@@ -148,26 +152,34 @@ function UserWhiteBoard({ socket, user, ctxRef, elements, setElements, color, se
             ></canvas>
             
             {/* Render video elements */}
-            {elements.filter(el => el.type === 'video').map((element, index) => (
-                <video
-                    key={`video-${index}`}
-                    src={element.src}
-                    autoPlay
-                    loop
-                    muted
-                    playsInline
-                    preload="metadata"
-                    style={{
-                        position: 'absolute',
-                        left: `${element.offsetX}px`,
-                        top: `${element.offsetY}px`,
-                        width: `${Math.abs(element.width)}px`,
-                        height: `${Math.abs(element.height)}px`,
-                        pointerEvents: 'none',
-                        zIndex: 1,
-                    }}
-                />
-            ))}
+            {elements.filter(el => el.type === 'video').map((element, index) => {
+                const displayX = Math.min(element.offsetX, element.offsetX + element.width);
+                const displayY = Math.min(element.offsetY, element.offsetY + element.height);
+                const displayWidth = Math.abs(element.width);
+                const displayHeight = Math.abs(element.height);
+
+                return (
+                    <video
+                        key={`video-${index}`}
+                        src={element.src}
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        preload="metadata"
+                        style={{
+                            position: 'absolute',
+                            left: `${displayX}px`,
+                            top: `${displayY}px`,
+                            width: `${displayWidth}px`,
+                            height: `${displayHeight}px`,
+                            objectFit: 'contain',
+                            pointerEvents: 'none',
+                            zIndex: 1,
+                        }}
+                    />
+                );
+            })}
         </div>
     );
 }

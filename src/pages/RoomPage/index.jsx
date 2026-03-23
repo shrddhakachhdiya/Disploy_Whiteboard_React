@@ -11,6 +11,8 @@ import axios from "axios";
 import { Tooltip } from "react-tooltip";
 import "react-tooltip/dist/react-tooltip.css";
 
+const WHITEBOARD_MEDIA_UPLOAD_API = import.meta.env.VITE_WHITEBOARD_MEDIA_UPLOAD_API || "https://back.disploy.com/api/WhiteBoardMaster/UploadWhiteBoardMedia";
+const WHITEBOARD_REDIRECT_URL = "https://web.disploy.com";
 
 
 const RoomPage = ({ socket, users, setUsers }) => {
@@ -49,16 +51,18 @@ const RoomPage = ({ socket, users, setUsers }) => {
     presenter: isHost
   }
 
-  // On mount, check if this is a reload — if so, redirect to web.disploy.com
+  // On mount, check if this is a reload and redirect outside whiteboard.
   useEffect(() => {
     if (sessionStorage.getItem("whiteboard_reloading")) {
       sessionStorage.removeItem("whiteboard_reloading");
       localStorage.removeItem("whiteboard_host");
       localStorage.removeItem("whiteboard_macids");
-      window.location.href = "https://web.disploy.com";
+      if (isHost) {
+        window.location.replace(WHITEBOARD_REDIRECT_URL);
+      }
       return;
     }
-  }, []);
+  }, [isHost]);
 
   useEffect(() => {
     const userData = {
@@ -94,6 +98,7 @@ const RoomPage = ({ socket, users, setUsers }) => {
       }
       localStorage.removeItem("whiteboard_host");
       localStorage.removeItem("whiteboard_macids");
+      localStorage.removeItem("whiteboard_macid");
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
 
@@ -129,13 +134,51 @@ const RoomPage = ({ socket, users, setUsers }) => {
     return () => {
       socket.off("allUsers", handleAllUsers)
     }
-  }, [])
+  }, []) 
+
+  //  useEffect(() => {
+  //   const handleForceRedirect = (data) => {
+  //     if (data?.roomId && data.roomId !== roomid) return;
+
+  //     const redirectUrl = data?.redirectUrl || WHITEBOARD_REDIRECT_URL;
+  //     toast.info(data?.message || "Room closed. Redirecting...");
+
+  //     localStorage.removeItem("whiteboard_host");
+  //     localStorage.removeItem("whiteboard_macids");
+
+  //     setTimeout(() => {
+  //       window.location.replace(redirectUrl);
+  //     }, 200);
+  //   };
+
+  //   socket.on("force-redirect", handleForceRedirect);
+
+  //   return () => {
+  //     socket.off("force-redirect", handleForceRedirect);
+  //   };
+  // }, [roomid, socket]);
+
+  useEffect(() => {
+    const handleSocketDisconnect = () => {
+      if (isHost) return;
+
+      localStorage.removeItem("whiteboard_host");
+      localStorage.removeItem("whiteboard_macids");
+      window.location.replace(WHITEBOARD_REDIRECT_URL);
+    };
+
+    socket.on("disconnect", handleSocketDisconnect);
+
+    return () => {
+      socket.off("disconnect", handleSocketDisconnect);
+    };
+  }, [isHost, socket]);
 
   const [tool, setTool] = useState("move");
   const [color, setColor] = useState("#000000");
   const [elements, setElements] = useState([]);
   const [history, setHistory] = useState([]);
-  
+
   // Memory limits - Increased for better performance
   const MAX_ELEMENTS = 10000; // Increased from 5000
   const MAX_HISTORY = 100;
@@ -188,23 +231,23 @@ const RoomPage = ({ socket, users, setUsers }) => {
       tempCanvas.width = canvas.width;
       tempCanvas.height = canvas.height;
       const tempCtx = tempCanvas.getContext('2d');
-      
+
       tempCtx.fillStyle = '#FFFFFF';
       tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-      
+
       tempCtx.drawImage(canvas, 0, 0);
-      
+
       const dataURL = tempCanvas.toDataURL('image/png');
-      
+
       const link = document.createElement('a');
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
       link.download = `whiteboard-${timestamp}.png`;
       link.href = dataURL;
-      
+
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      
+
       toast.success('Whiteboard downloaded successfully!');
     } catch (error) {
       console.error('Download error:', error);
@@ -280,106 +323,174 @@ const RoomPage = ({ socket, users, setUsers }) => {
     }
   }
 
-  function handleImageSelect(event) {
-    const file = event.target.files[0];
-    if (file) {
-      const isVideo = file.type.startsWith('video/');
-      const isImage = file.type.startsWith('image/');
-      
-      if (!isVideo && !isImage) {
-        toast.error('Please select an image or video file');
-        return;
-      }
+  const fitMediaInBounds = (naturalWidth, naturalHeight, maxWidth, maxHeight) => {
+    const safeNaturalWidth = naturalWidth > 0 ? naturalWidth : maxWidth;
+    const safeNaturalHeight = naturalHeight > 0 ? naturalHeight : maxHeight;
+    const widthRatio = maxWidth / safeNaturalWidth;
+    const heightRatio = maxHeight / safeNaturalHeight;
+    const scale = Math.min(widthRatio, heightRatio, 1);
 
-      const maxBytes = (isVideo ? MAX_VIDEO_UPLOAD_MB : MAX_IMAGE_UPLOAD_MB) * 1024 * 1024;
-      if (file.size > maxBytes) {
-        toast.error(`File is too large. Max ${isVideo ? MAX_VIDEO_UPLOAD_MB : MAX_IMAGE_UPLOAD_MB}MB allowed.`);
-        event.target.value = null;
-        return;
-      }
-      
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const mediaData = reader.result;
-        
-        if (isVideo) {
-          console.log("🚀 ~ handleImageSelect ~ isVideo:", isVideo)
-          // Video: use fixed size
-          const centerX = window.innerWidth / 2 - 100;
-          const centerY = window.innerHeight / 2 - 100;
-          
-          setElements((prevElements) => [
-            ...prevElements,
-            {
-              type: "video",
-              offsetX: centerX,
-              offsetY: centerY,
-              height: 200,
-              width: 200,
-              src: mediaData,
-            },
-          ]);
-          
-          clearHistoryOnNewAction();
-          setTool("move");
-          toast.success('Video added to whiteboard!');
-        } else {
-          // Image: maintain aspect ratio
-          const tempImg = document.createElement('img');
-          tempImg.onload = () => {
-            const naturalWidth = tempImg.naturalWidth;
-            const naturalHeight = tempImg.naturalHeight;
-            const aspectRatio = naturalWidth / naturalHeight;
-            const maxSize = 300; // Maximum dimension
-            let displayWidth, displayHeight;
-            
-            if (naturalWidth > naturalHeight) {
-              // Landscape
-              displayWidth = maxSize;
-              displayHeight = maxSize / aspectRatio;
-            } else {
-              // Portrait or Square
-              displayHeight = maxSize;
-              displayWidth = maxSize * aspectRatio;
-            }
-            
-            const centerX = window.innerWidth / 2 - displayWidth / 2;
-            const centerY = window.innerHeight / 2 - displayHeight / 2;
-            
-            console.log('Adding image with dimensions:', { displayWidth, displayHeight, naturalWidth, naturalHeight });
-            
-            setElements((prevElements) => {
-              const newElements = [
-                ...prevElements,
-                {
-                  type: "image",
-                  offsetX: centerX,
-                  offsetY: centerY,
-                  height: displayHeight,
-                  width: displayWidth,
-                  src: mediaData,
-                },
-              ];
-              return newElements;
-            });
-            
-            clearHistoryOnNewAction();
-            setTool("move");
-            toast.success('Image added to whiteboard!');
-          };
-          
-          tempImg.onerror = (error) => {
-            console.error('Failed to load image:', error);
-            toast.error('Failed to load image. Please try again.');
-          };
-          
-          tempImg.src = mediaData;
-        }
+    return {
+      width: safeNaturalWidth * scale,
+      height: safeNaturalHeight * scale,
+    };
+  };
+
+  const createImageElementFromUrl = (src) => {
+    return new Promise((resolve) => {
+      const tempImg = document.createElement("img");
+
+      tempImg.onload = () => {
+        const naturalWidth = tempImg.naturalWidth || 300;
+        const naturalHeight = tempImg.naturalHeight || 300;
+        const { width: displayWidth, height: displayHeight } = fitMediaInBounds(
+          naturalWidth,
+          naturalHeight,
+          260,
+          200
+        );
+
+        resolve({
+          id: uuidv4(),
+          type: "image",
+          offsetX: window.innerWidth / 2 - displayWidth / 2,
+          offsetY: window.innerHeight / 2 - displayHeight / 2,
+          height: displayHeight,
+          width: displayWidth,
+          src,
+        });
       };
-      reader.readAsDataURL(file);
+
+      tempImg.onerror = () => {
+        resolve({
+          id: uuidv4(),
+          type: "image",
+          offsetX: window.innerWidth / 2 - 150,
+          offsetY: window.innerHeight / 2 - 150,
+          height: 300,
+          width: 300,
+          src,
+        });
+      };
+
+      tempImg.src = src;
+    });
+  };
+
+  const createVideoElementFromUrl = (src) => {
+    return new Promise((resolve) => {
+      const video = document.createElement("video");
+      video.preload = "metadata";
+
+      video.onloadedmetadata = () => {
+        const naturalWidth = video.videoWidth || 640;
+        const naturalHeight = video.videoHeight || 360;
+        const { width, height } = fitMediaInBounds(
+          naturalWidth,
+          naturalHeight,
+          320,
+          220
+        );
+
+        resolve({
+          id: uuidv4(),
+          type: "video",
+          offsetX: window.innerWidth / 2 - width / 2,
+          offsetY: window.innerHeight / 2 - height / 2,
+          height,
+          width,
+          src,
+        });
+      };
+
+      video.onerror = () => {
+        resolve({
+          id: uuidv4(),
+          type: "video",
+          offsetX: window.innerWidth / 2 - 160,
+          offsetY: window.innerHeight / 2 - 90,
+          height: 180,
+          width: 320,
+          src,
+        });
+      };
+
+      video.src = src;
+    });
+  };
+
+  async function handleImageSelect(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const isVideo = file.type.startsWith('video/');
+    const isImage = file.type.startsWith('image/');
+
+    if (!isVideo && !isImage) {
+      toast.error('Please select an image or video file');
+      event.target.value = null;
+      return;
     }
-    // Reset file input
-    event.target.value = null;
+
+    // const maxBytes = (isVideo ? MAX_VIDEO_UPLOAD_MB : MAX_IMAGE_UPLOAD_MB) * 1024 * 1024;
+    // if (file.size > maxBytes) {
+    //   toast.error(`File is too large. Max ${isVideo ? MAX_VIDEO_UPLOAD_MB : MAX_IMAGE_UPLOAD_MB}MB allowed.`);
+    //   event.target.value = null;
+    //   return;
+    // }
+
+    const uploadingToastId = toast.loading('Uploading media...');
+
+    try {
+      const formData = new FormData();
+      formData.append('code', roomid);
+      formData.append('file', file);
+
+      const uploadRes = await axios.post(WHITEBOARD_MEDIA_UPLOAD_API, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      const res = uploadRes?.data;
+      if (res?.status) {
+        const mediaUrl = res?.fileUrl;
+        if (!mediaUrl) {
+          throw new Error('Upload API did not return a media URL.');
+        }
+
+        const mediaElement = isVideo
+          ? await createVideoElementFromUrl(mediaUrl)
+          : await createImageElementFromUrl(mediaUrl);
+
+        setElements((prevElements) => [...prevElements, mediaElement]);
+        clearHistoryOnNewAction();
+        setTool('move');
+
+        socket.emit('whiteboard-media-added', {
+          roomId: roomid,
+          code: roomid,
+          media: mediaElement,
+        });
+
+        toast.update(uploadingToastId, {
+          render: `${isVideo ? 'Video' : 'Image'} uploaded successfully!`,
+          type: 'success',
+          isLoading: false,
+          autoClose: 2500,
+        });
+
+      }
+    } catch (error) {
+      console.error('Media upload failed:', error);
+      toast.update(uploadingToastId, {
+        render: 'Media upload failed. Please try again.',
+        type: 'error',
+        isLoading: false,
+        autoClose: 3000,
+      });
+    } finally {
+      event.target.value = null;
+    }
   }
 
   const clearHistoryOnNewAction = () => {
@@ -387,7 +498,7 @@ const RoomPage = ({ socket, users, setUsers }) => {
       setHistory([]);
     }
   };
-  
+
   // Cleanup old elements when limit is reached
   useEffect(() => {
     if (elements.length > MAX_ELEMENTS) {
@@ -395,7 +506,7 @@ const RoomPage = ({ socket, users, setUsers }) => {
       setElements(prevElements => prevElements.slice(-MAX_ELEMENTS));
       setHistory([]);
     }
-    
+
     // Check image count separately
     const imageCount = elements.filter(el => el.type === 'image').length;
     if (imageCount > MAX_IMAGE_ELEMENTS) {
@@ -479,6 +590,28 @@ const RoomPage = ({ socket, users, setUsers }) => {
 
     return () => socket.off("messageResponse")
   }, [openedChatBar])
+
+  useEffect(() => {
+    const handleMediaAdded = (payload) => {
+      if (!payload?.media) return;
+      if (payload.roomId && payload.roomId !== roomid) return;
+
+      setElements((prevElements) => {
+        const mediaId = payload.media.id;
+        if (mediaId && prevElements.some((el) => el.id === mediaId)) {
+          return prevElements;
+        }
+
+        return [...prevElements, payload.media];
+      });
+    };
+
+    socket.on('whiteboard-media-added', handleMediaAdded);
+
+    return () => {
+      socket.off('whiteboard-media-added', handleMediaAdded);
+    };
+  }, [roomid, socket]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -744,51 +877,51 @@ const RoomPage = ({ socket, users, setUsers }) => {
             {editingTextIndex !== null ? "Edit Text" : "Enter Text"}
           </h3>
           <div className="flex gap-4 items-center justify-center ">
-          {/* Text Size Controls */}
-          <div style={{ marginBottom: "15px", display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}>
-            <label style={{ fontSize: "12px", color: "#666", fontWeight: "500" }}>Font Size:</label>
-            <div style={{ display: "flex", alignItems: "center", gap: "5px", border: "1px solid #ddd", borderRadius: "6px", padding: "4px 8px", backgroundColor: "#f9f9f9" }}>
-              <button
-                onClick={() => setFontSize(prev => Math.max(8, prev - 2))}
-                style={{
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  padding: "4px",
-                  display: "flex",
-                  alignItems: "center",
-                  borderRadius: "4px",
-                }}
-                onMouseEnter={(e) => e.target.style.backgroundColor = "#e0e0e0"}
-                onMouseLeave={(e) => e.target.style.backgroundColor = "transparent"}
-              >
-                <Minus size={16} style={{ stroke: "#333" }} />
-              </button>
-              <span style={{ fontSize: "14px", fontWeight: "bold", minWidth: "35px", textAlign: "center", color: "#333" }}>
-                {fontSize}px
-              </span>
-              <button
-                onClick={() => setFontSize(prev => Math.min(72, prev + 2))}
-                style={{
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  padding: "4px",
-                  display: "flex",
-                  alignItems: "center",
-                  borderRadius: "4px",
-                }}
-                onMouseEnter={(e) => e.target.style.backgroundColor = "#e0e0e0"}
-                onMouseLeave={(e) => e.target.style.backgroundColor = "transparent"}
-              >
-                <Plus size={16} style={{ stroke: "#333" }} />
-              </button>
+            {/* Text Size Controls */}
+            <div style={{ marginBottom: "15px", display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}>
+              <label style={{ fontSize: "12px", color: "#666", fontWeight: "500" }}>Font Size:</label>
+              <div style={{ display: "flex", alignItems: "center", gap: "5px", border: "1px solid #ddd", borderRadius: "6px", padding: "4px 8px", backgroundColor: "#f9f9f9" }}>
+                <button
+                  onClick={() => setFontSize(prev => Math.max(8, prev - 2))}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: "4px",
+                    display: "flex",
+                    alignItems: "center",
+                    borderRadius: "4px",
+                  }}
+                  onMouseEnter={(e) => e.target.style.backgroundColor = "#e0e0e0"}
+                  onMouseLeave={(e) => e.target.style.backgroundColor = "transparent"}
+                >
+                  <Minus size={16} style={{ stroke: "#333" }} />
+                </button>
+                <span style={{ fontSize: "14px", fontWeight: "bold", minWidth: "35px", textAlign: "center", color: "#333" }}>
+                  {fontSize}px
+                </span>
+                <button
+                  onClick={() => setFontSize(prev => Math.min(72, prev + 2))}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: "4px",
+                    display: "flex",
+                    alignItems: "center",
+                    borderRadius: "4px",
+                  }}
+                  onMouseEnter={(e) => e.target.style.backgroundColor = "#e0e0e0"}
+                  onMouseLeave={(e) => e.target.style.backgroundColor = "transparent"}
+                >
+                  <Plus size={16} style={{ stroke: "#333" }} />
+                </button>
+              </div>
             </div>
-          </div>
-          
-          <div style={{ marginBottom: "10px", fontSize: "12px", color: "#666" }}>
-            Color: <span style={{ color: color }}>■</span>
-          </div>
+
+            <div style={{ marginBottom: "10px", fontSize: "12px", color: "#666" }}>
+              Color: <span style={{ color: color }}>■</span>
+            </div>
           </div>
 
           <input
@@ -814,19 +947,19 @@ const RoomPage = ({ socket, users, setUsers }) => {
               boxSizing: "border-box",
             }}
           />
-          
+
           {/* Preview */}
           {textInput && (
-            <div style={{ 
-              marginBottom: "10px", 
-              padding: "10px", 
-              backgroundColor: "#f5f5f5", 
+            <div style={{
+              marginBottom: "10px",
+              padding: "10px",
+              backgroundColor: "#f5f5f5",
               borderRadius: "4px",
               minHeight: "40px"
             }}>
               <div style={{ fontSize: "11px", color: "#888", marginBottom: "5px" }}>Preview:</div>
-              <div style={{ 
-                fontSize: `${fontSize}px`, 
+              <div style={{
+                fontSize: `${fontSize}px`,
                 fontFamily: fontFamily,
                 color: color,
                 wordBreak: "break-word"
@@ -835,7 +968,7 @@ const RoomPage = ({ socket, users, setUsers }) => {
               </div>
             </div>
           )}
-          
+
           <div>
             <button
               onClick={handleTextSubmit}
@@ -895,7 +1028,7 @@ const RoomPage = ({ socket, users, setUsers }) => {
               <Pencil size={20} style={{ stroke: tool === "pencil" ? "white" : "black" }} />
             </div>
 
-            <div 
+            <div
               data-tooltip-id="line-tool"
               data-tooltip-content="Line"
               className={"text-white rounded-md p-3 transition-all duration-200 hover:scale-110 " + (tool === "line" ? "toolShadow" : "")}
@@ -904,7 +1037,7 @@ const RoomPage = ({ socket, users, setUsers }) => {
               <LineSquiggle size={20} style={{ stroke: tool === "line" ? "white" : "black" }} />
             </div>
 
-            <div 
+            <div
               data-tooltip-id="point-tool"
               data-tooltip-content="Point"
               className={"text-white rounded-md p-3 transition-all duration-200 hover:scale-110 " + (tool === "point" ? "toolShadow" : "")}
@@ -913,7 +1046,7 @@ const RoomPage = ({ socket, users, setUsers }) => {
               <CircleSmall size={20} style={{ fill: tool === "point" ? "white" : "black", stroke: tool === "point" ? "white" : "black" }} />
             </div>
 
-            <div 
+            <div
               data-tooltip-id="text-tool"
               data-tooltip-content="Text"
               className={"text-white rounded-md p-3 transition-all duration-200 hover:scale-110 " + (tool === "text" ? "toolShadow" : "")}
@@ -922,7 +1055,7 @@ const RoomPage = ({ socket, users, setUsers }) => {
               <CaseUpper size={20} style={{ stroke: tool === "text" ? "white" : "black" }} />
             </div>
 
-            <div 
+            <div
               data-tooltip-id="rect-tool"
               data-tooltip-content="Rectangle"
               className={"text-white rounded-md p-3 transition-all duration-200 hover:scale-110 " + (tool === "rect" ? "toolShadow" : "")}
@@ -931,7 +1064,7 @@ const RoomPage = ({ socket, users, setUsers }) => {
               <RectangleHorizontal size={20} style={{ stroke: tool === "rect" ? "white" : "black" }} />
             </div>
 
-            <div 
+            <div
               data-tooltip-id="circle-tool"
               data-tooltip-content="Circle"
               className={"text-white rounded-md p-3 transition-all duration-200 hover:scale-110 " + (tool === "circle" ? "toolShadow" : "")}
@@ -940,7 +1073,7 @@ const RoomPage = ({ socket, users, setUsers }) => {
               <Circle size={20} style={{ stroke: tool === "circle" ? "white" : "black" }} />
             </div>
 
-            <div 
+            <div
               data-tooltip-id="eraser-tool"
               data-tooltip-content="Eraser"
               className={"text-white rounded-md p-3 transition-all duration-200 hover:scale-110 " + (tool === "eraser" ? "toolShadow" : "")}
@@ -1008,7 +1141,7 @@ const RoomPage = ({ socket, users, setUsers }) => {
           >
             <Image size={20} style={{ stroke: "black" }} />
           </div>
-          
+
           {/* Hidden file input for image/video upload */}
           <input
             ref={imageInputRef}
@@ -1101,7 +1234,7 @@ const RoomPage = ({ socket, users, setUsers }) => {
             setSelectedElements={setSelectedElements}
             onTextDoubleClick={handleTextDoubleClick}
           />
-          
+
           {/* Memory usage indicator - Enhanced with image count */}
           {(elements.length > MAX_ELEMENTS * 0.8 || elements.filter(el => el.type === 'image').length > MAX_IMAGE_ELEMENTS * 0.7) && (
             <div style={{

@@ -168,6 +168,11 @@ const Whiteboard = ({
         ctx.fillStyle = element.color;
         ctx.fill();
       } else if (element.type === "image") {
+        const drawX = Math.min(element.offsetX, element.offsetX + element.width);
+        const drawY = Math.min(element.offsetY, element.offsetY + element.height);
+        const drawWidth = Math.abs(element.width);
+        const drawHeight = Math.abs(element.height);
+
         if (!imagesCache.current[element.src]) {
           imagesToLoad++;
           // Clear cache if it gets too large
@@ -184,10 +189,10 @@ const Whiteboard = ({
             imagesCache.current[element.src] = imageObj;
             ctx.drawImage(
               imageObj,
-              element.offsetX,
-              element.offsetY,
-              element.width,
-              element.height
+              drawX,
+              drawY,
+              drawWidth,
+              drawHeight
             );
           };
           imageObj.onerror = () => {
@@ -196,10 +201,10 @@ const Whiteboard = ({
         } else {
           ctx.drawImage(
             imagesCache.current[element.src],
-            element.offsetX,
-            element.offsetY,
-            element.width,
-            element.height
+            drawX,
+            drawY,
+            drawWidth,
+            drawHeight
           );
         }
       } else if (element.type === "text") {
@@ -957,6 +962,10 @@ const Whiteboard = ({
           selectedEl.offsetY === element.offsetY &&
           selectedEl.type === element.type
         );
+        const displayX = Math.min(element.offsetX, element.offsetX + element.width);
+        const displayY = Math.min(element.offsetY, element.offsetY + element.height);
+        const displayWidth = Math.abs(element.width);
+        const displayHeight = Math.abs(element.height);
         
         return (
           <video
@@ -969,10 +978,11 @@ const Whiteboard = ({
             preload="metadata"
             style={{
               position: 'absolute',
-              left: `${element.offsetX}px`,
-              top: `${element.offsetY}px`,
-              width: `${Math.abs(element.width)}px`,
-              height: `${Math.abs(element.height)}px`,
+              left: `${displayX}px`,
+              top: `${displayY}px`,
+              width: `${displayWidth}px`,
+              height: `${displayHeight}px`,
+              objectFit: 'contain',
               pointerEvents: 'none',
               border: isSelected ? '2px dashed #007acc' : 'none',
               boxShadow: isSelected ? '0 0 0 3px rgba(0, 122, 204, 0.2)' : 'none',
