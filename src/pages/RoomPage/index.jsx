@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import Whiteboard from "../../components/Whiteboard";
 import Chat from "../../components/ChatBar";
 import "./index.css";
@@ -13,6 +13,63 @@ import "react-tooltip/dist/react-tooltip.css";
 
 const WHITEBOARD_MEDIA_UPLOAD_API = import.meta.env.VITE_WHITEBOARD_MEDIA_UPLOAD_API || "https://back.disploy.com/api/WhiteBoardMaster/UploadWhiteBoardMedia";
 const WHITEBOARD_REDIRECT_URL = "https://web.disploy.com";
+const TARGET_ASPECT_RATIO = 16 / 9;
+const MIN_BOARD_WIDTH = 320;
+const MIN_BOARD_HEIGHT = 180;
+
+const fitToAspectRatio = (maxWidth, maxHeight, ratio = TARGET_ASPECT_RATIO) => {
+  const safeWidth = Math.max(MIN_BOARD_WIDTH, Math.floor(maxWidth || MIN_BOARD_WIDTH));
+  const safeHeight = Math.max(MIN_BOARD_HEIGHT, Math.floor(maxHeight || MIN_BOARD_HEIGHT));
+
+  let width = safeWidth;
+  let height = Math.floor(width / ratio);
+
+  if (height > safeHeight) {
+    height = safeHeight;
+    width = Math.floor(height * ratio);
+  }
+
+  return {
+    width: Math.max(MIN_BOARD_WIDTH, width),
+    height: Math.max(MIN_BOARD_HEIGHT, height),
+  };
+};
+
+const scaleElementToBoard = (element, scaleX, scaleY) => {
+  if (!element) return element;
+
+  const scaled = {
+    ...element,
+    offsetX: (element.offsetX ?? 0) * scaleX,
+    offsetY: (element.offsetY ?? 0) * scaleY,
+  };
+
+  switch (element.type) {
+    case "line":
+      scaled.width = (element.width ?? 0) * scaleX;
+      scaled.height = (element.height ?? 0) * scaleY;
+      break;
+    case "rect":
+    case "circle":
+    case "image":
+    case "video":
+      scaled.width = (element.width ?? 0) * scaleX;
+      scaled.height = (element.height ?? 0) * scaleY;
+      break;
+    case "text":
+      scaled.fontSize = Math.max(8, Math.round((element.fontSize || 20) * Math.min(scaleX, scaleY)));
+      break;
+    case "pencil":
+      scaled.path = Array.isArray(element.path)
+        ? element.path.map(([x, y]) => [x * scaleX, y * scaleY])
+        : element.path;
+      break;
+    default:
+      break;
+  }
+
+  return scaled;
+};
 
 
 const RoomPage = ({ socket, users, setUsers }) => {
@@ -200,6 +257,15 @@ const RoomPage = ({ socket, users, setUsers }) => {
   const [selectedElements, setSelectedElements] = useState([]);
   const [shouldSendCanvas, setShouldSendCanvas] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [localViewport, setLocalViewport] = useState({
+    width: window.innerWidth,
+    height: window.innerHeight,
+  });
+  const [sharedViewport, setSharedViewport] = useState({
+    minWidth: null,
+    minHeight: null,
+    viewerCount: 0,
+  });
 
   const isAdmin = user?.host;
 
@@ -207,6 +273,89 @@ const RoomPage = ({ socket, users, setUsers }) => {
   const ctxRef = useRef(null);
   const userBarRef = useRef(null);
   const imageInputRef = useRef(null);
+  const previousBoardSizeRef = useRef(null);
+
+  const boardDimensions = useMemo(() => {
+    const hasViewerBaseline =
+      sharedViewport.viewerCount > 0 &&
+      Number.isFinite(sharedViewport.minWidth) &&
+      Number.isFinite(sharedViewport.minHeight);
+
+    if (hasViewerBaseline) {
+      return fitToAspectRatio(sharedViewport.minWidth, sharedViewport.minHeight);
+    }
+
+    return fitToAspectRatio(localViewport.width, localViewport.height);
+  }, [localViewport.height, localViewport.width, sharedViewport.minHeight, sharedViewport.minWidth, sharedViewport.viewerCount]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setLocalViewport({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleViewportSync = (data) => {
+      if (data?.roomId && data.roomId !== roomid) return;
+
+      setSharedViewport({
+        minWidth: Number.isFinite(data?.minWidth) ? data.minWidth : null,
+        minHeight: Number.isFinite(data?.minHeight) ? data.minHeight : null,
+        viewerCount: Number.isFinite(data?.viewerCount) ? data.viewerCount : 0,
+      });
+    };
+
+    socket.on("whiteboard-viewport-sync", handleViewportSync);
+
+    return () => {
+      socket.off("whiteboard-viewport-sync", handleViewportSync);
+    };
+  }, [roomid, socket]);
+
+  useEffect(() => {
+    socket.emit("whiteboard-viewport", {
+      roomId: roomid,
+      width: localViewport.width,
+      height: localViewport.height,
+      isViewer: !isHost,
+    });
+  }, [isHost, localViewport.height, localViewport.width, roomid, socket]);
+
+  useEffect(() => {
+    if (!user?.presenter) return;
+
+    const previousSize = previousBoardSizeRef.current;
+    if (!previousSize) {
+      previousBoardSizeRef.current = boardDimensions;
+      return;
+    }
+
+    if (
+      previousSize.width === boardDimensions.width &&
+      previousSize.height === boardDimensions.height
+    ) {
+      return;
+    }
+
+    const scaleX = boardDimensions.width / previousSize.width;
+    const scaleY = boardDimensions.height / previousSize.height;
+
+    setElements((prevElements) => {
+      if (!prevElements.length) return prevElements;
+      return prevElements.map((element) => scaleElementToBoard(element, scaleX, scaleY));
+    });
+    setSelectedElements([]);
+
+    previousBoardSizeRef.current = boardDimensions;
+  }, [boardDimensions, setElements, user?.presenter]);
 
   function handleClear() {
     const canvas = canvasRef.current;
@@ -353,8 +502,8 @@ const RoomPage = ({ socket, users, setUsers }) => {
         resolve({
           id: uuidv4(),
           type: "image",
-          offsetX: window.innerWidth / 2 - displayWidth / 2,
-          offsetY: window.innerHeight / 2 - displayHeight / 2,
+          offsetX: boardDimensions.width / 2 - displayWidth / 2,
+          offsetY: boardDimensions.height / 2 - displayHeight / 2,
           height: displayHeight,
           width: displayWidth,
           src,
@@ -365,8 +514,8 @@ const RoomPage = ({ socket, users, setUsers }) => {
         resolve({
           id: uuidv4(),
           type: "image",
-          offsetX: window.innerWidth / 2 - 150,
-          offsetY: window.innerHeight / 2 - 150,
+          offsetX: boardDimensions.width / 2 - 150,
+          offsetY: boardDimensions.height / 2 - 150,
           height: 300,
           width: 300,
           src,
@@ -395,8 +544,8 @@ const RoomPage = ({ socket, users, setUsers }) => {
         resolve({
           id: uuidv4(),
           type: "video",
-          offsetX: window.innerWidth / 2 - width / 2,
-          offsetY: window.innerHeight / 2 - height / 2,
+          offsetX: boardDimensions.width / 2 - width / 2,
+          offsetY: boardDimensions.height / 2 - height / 2,
           height,
           width,
           src,
@@ -407,8 +556,8 @@ const RoomPage = ({ socket, users, setUsers }) => {
         resolve({
           id: uuidv4(),
           type: "video",
-          offsetX: window.innerWidth / 2 - 160,
-          offsetY: window.innerHeight / 2 - 90,
+          offsetX: boardDimensions.width / 2 - 160,
+          offsetY: boardDimensions.height / 2 - 90,
           height: 180,
           width: 320,
           src,
@@ -1233,6 +1382,7 @@ const RoomPage = ({ socket, users, setUsers }) => {
             selectedElements={selectedElements}
             setSelectedElements={setSelectedElements}
             onTextDoubleClick={handleTextDoubleClick}
+            boardDimensions={boardDimensions}
           />
 
           {/* Memory usage indicator - Enhanced with image count */}
@@ -1271,6 +1421,7 @@ const RoomPage = ({ socket, users, setUsers }) => {
           setElements={setElements}
           color={color}
           setColor={setColor}
+          boardDimensions={boardDimensions}
         />
       }
     </div>

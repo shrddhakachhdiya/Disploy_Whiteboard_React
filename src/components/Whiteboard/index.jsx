@@ -21,7 +21,8 @@ const Whiteboard = ({
   sendCanvasData,
   selectedElements,
   setSelectedElements,
-  onTextDoubleClick
+  onTextDoubleClick,
+  boardDimensions
 }) => {
 
   const [img, setImg] = useState(null);
@@ -34,9 +35,23 @@ const Whiteboard = ({
   const [resizeElementIndex, setResizeElementIndex] = useState(null);
   const [cursor, setCursor] = useState('default');
   const [erasing, setErasing] = useState(false);
+  const [viewportSize, setViewportSize] = useState({
+    width: window.innerWidth,
+    height: window.innerHeight,
+  });
   const imagesCache = useRef({});
-  const userCanvasRef = useRef(null);
   const lastEmitTime = useRef(0);
+  const boardWidth = Math.max(320, Math.floor(boardDimensions?.width || viewportSize.width));
+  const boardHeight = Math.max(180, Math.floor(boardDimensions?.height || viewportSize.height));
+  const stageScale = Math.min(viewportSize.width / boardWidth, viewportSize.height / boardHeight);
+  const safeStageScale = Number.isFinite(stageScale) && stageScale > 0 ? stageScale : 1;
+  const stageWidth = boardWidth * safeStageScale;
+  const stageHeight = boardHeight * safeStageScale;
+  const stageOffsetX = (viewportSize.width - stageWidth) / 2;
+  const stageOffsetY = (viewportSize.height - stageHeight) / 2;
+  const stageBorderRadius = 12;
+  const outerAreaColor = "#d9dee6";
+  const boardAreaColor = "#ffffff";
   const EMIT_THROTTLE = 100; // Throttle socket emissions to once per 100ms
   const MAX_CACHE_SIZE = 150; // Increased from 50 to support more images
 
@@ -56,34 +71,40 @@ const Whiteboard = ({
 
 
   useEffect(() => {
+    const handleResize = () => {
+      setViewportSize({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
+    };
+
+    window.addEventListener("resize", handleResize);
+
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, []);
+
+
+  useEffect(() => {
     const canvas = canvasRef.current;
-    const userCanvas = userCanvasRef.current;
     if (canvas) {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
+      canvas.width = boardWidth;
+      canvas.height = boardHeight;
 
       const ctx = canvas.getContext("2d");
-      ctx.strokeStyle = color;
       ctx.lineWidth = 2;
       ctx.lineCap = "round";
 
       ctxRef.current = ctx;
     }
-
-    if (userCanvas) {
-      userCanvas.width = window.innerWidth;
-      userCanvas.height = window.innerHeight;
-
-      const userCtx = userCanvas.getContext("2d");
-      userCtx.strokeStyle = color;
-      userCtx.lineWidth = 2;
-      userCtx.lineCap = "round";
-    }
-  }, []);
+  }, [boardHeight, boardWidth, canvasRef, ctxRef]);
 
   useEffect(() => {
-    if (canvasRef.current) ctxRef.current.strokeStyle = color;
-  }, [color]);
+    if (canvasRef.current) {
+      ctxRef.current.strokeStyle = color;
+    }
+  }, [canvasRef, color, ctxRef]);
 
   // Cleanup on unmount to free memory
   useEffect(() => {
@@ -101,7 +122,7 @@ const Whiteboard = ({
     const roughCanvas = rough.canvas(canvas);
 
     // Clear canvas before drawing
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, boardWidth, boardHeight);
 
     let imagesToLoad = 0;
 
@@ -267,7 +288,7 @@ const Whiteboard = ({
       lastEmitTime.current = now;
     }
 
-  }, [elements, shouldSendCanvas]);
+  }, [boardHeight, boardWidth, elements, selectedElements, sendCanvasData, setShouldSendCanvas, shouldSendCanvas, socket, user?.presenter]);
 
   const getResizeDirection = (x, y, element) => {
     if (element.type === 'text' || element.type === 'pencil' || element.type === 'point') {
@@ -470,8 +491,36 @@ const Whiteboard = ({
     }
   };
 
+  const getBoardCoordinates = (event) => {
+    const containerRect = event.currentTarget.getBoundingClientRect();
+    const x = (event.clientX - containerRect.left - stageOffsetX) / safeStageScale;
+    const y = (event.clientY - containerRect.top - stageOffsetY) / safeStageScale;
+
+    return {
+      x: Math.min(Math.max(x, 0), boardWidth),
+      y: Math.min(Math.max(y, 0), boardHeight),
+    };
+  };
+
+  const isInsideBoardArea = (event) => {
+    const containerRect = event.currentTarget.getBoundingClientRect();
+    const pointerX = event.clientX - containerRect.left;
+    const pointerY = event.clientY - containerRect.top;
+
+    return (
+      pointerX >= stageOffsetX &&
+      pointerX <= stageOffsetX + stageWidth &&
+      pointerY >= stageOffsetY &&
+      pointerY <= stageOffsetY + stageHeight
+    );
+  };
+
   function handleMouseDown(e) {
-    const { offsetX, offsetY } = e.nativeEvent;
+    if (!isInsideBoardArea(e)) {
+      return;
+    }
+
+    const { x: offsetX, y: offsetY } = getBoardCoordinates(e);
 
     // Define drawing tools that should not trigger element selection/dragging
     const drawingTools = ["pencil", "line", "rect", "circle", "point", "text", "eraser"];
@@ -659,7 +708,11 @@ const Whiteboard = ({
   }
 
   function handleDoubleClick(e) {
-    const { offsetX, offsetY } = e.nativeEvent;
+    if (!isInsideBoardArea(e)) {
+      return;
+    }
+
+    const { x: offsetX, y: offsetY } = getBoardCoordinates(e);
     
     // Find if a text element was double-clicked
     for (let i = elements.length - 1; i >= 0; i--) {
@@ -675,13 +728,18 @@ const Whiteboard = ({
   }
 
   function handleMouseMove(e) {
-    const { offsetX, offsetY } = e.nativeEvent;
+    const { x: offsetX, y: offsetY } = getBoardCoordinates(e);
+    const pointerInBoardArea = isInsideBoardArea(e);
 
     if (!isDrawing && !dragging && !resizing && !erasing) {
       let newCursor = 'default';
 
+      if (!pointerInBoardArea) {
+        newCursor = 'default';
+      }
+
       // Set cursor based on selected tool
-      if (tool === "pencil") {
+      else if (tool === "pencil") {
         newCursor = 'cursor-pencil';
       } else if (tool === "line") {
         newCursor = 'cursor-line';
@@ -910,18 +968,32 @@ const Whiteboard = ({
     return (
       <div
         style={{
-          border: "2px solid black",
           height: "100vh",
           width: "100vw",
           overflow: "hidden",
-          backgroundColor: "white",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: outerAreaColor,
         }}
       >
-        <img
-          src={img}
-          alt="real time white board image shared by presenter"
-          style={{ width: "100vw", height: "100vh", objectFit: "contain" }}
-        />
+        <div
+          style={{
+            width: `${stageWidth}px`,
+            height: `${stageHeight}px`,
+            backgroundColor: boardAreaColor,
+            border: "2px solid #8d99ab",
+            borderRadius: `${stageBorderRadius}px`,
+            boxShadow: "0 14px 28px rgba(15, 23, 42, 0.18)",
+            overflow: "hidden",
+          }}
+        >
+          <img
+            src={img}
+            alt="real time white board image shared by presenter"
+            style={{ width: "100%", height: "100%", objectFit: "contain" }}
+          />
+        </div>
       </div>
     );
   }
@@ -934,7 +1006,7 @@ const Whiteboard = ({
         overflow: "hidden",
         position: "relative",
         cursor: cursor,
-        backgroundColor: "white"
+        backgroundColor: outerAreaColor
       }}
       className={`shadow-lg ${!user?.presenter ? "pointer-events-none" : ""}`}
       onMouseDown={handleMouseDown}
@@ -942,55 +1014,75 @@ const Whiteboard = ({
       onMouseMove={handleMouseMove}
       onDoubleClick={handleDoubleClick}
     >
-      <canvas
-        className={cursor.startsWith('cursor-') ? cursor : ''}
+      <div
         style={{
-          cursor: cursor.startsWith('cursor-') ? undefined : cursor,
           position: 'absolute',
-          top: 0,
-          left: 0,
-          zIndex: 2,
-          backgroundColor: 'transparent'
+          top: `${stageOffsetY}px`,
+          left: `${stageOffsetX}px`,
+          width: `${boardWidth}px`,
+          height: `${boardHeight}px`,
+          transform: `scale(${safeStageScale})`,
+          transformOrigin: 'top left',
+          border: '2px solid #8d99ab',
+          borderRadius: `${stageBorderRadius}px`,
+          boxShadow: '0 14px 28px rgba(15, 23, 42, 0.18)',
+          overflow: 'hidden',
+          backgroundColor: boardAreaColor,
         }}
-        ref={canvasRef}
-      ></canvas>
-      
-      {/* Render video elements */}
-      {elements.filter(el => el.type === 'video').map((element, index) => {
-        const isSelected = selectedElements && selectedElements.some(selectedEl =>
-          selectedEl.offsetX === element.offsetX &&
-          selectedEl.offsetY === element.offsetY &&
-          selectedEl.type === element.type
-        );
-        const displayX = Math.min(element.offsetX, element.offsetX + element.width);
-        const displayY = Math.min(element.offsetY, element.offsetY + element.height);
-        const displayWidth = Math.abs(element.width);
-        const displayHeight = Math.abs(element.height);
-        
-        return (
-          <video
-            key={`video-${index}`}
-            src={element.src}
-            autoPlay
-            loop
-            muted
-            playsInline
-            preload="metadata"
-            style={{
-              position: 'absolute',
-              left: `${displayX}px`,
-              top: `${displayY}px`,
-              width: `${displayWidth}px`,
-              height: `${displayHeight}px`,
-              objectFit: 'contain',
-              pointerEvents: 'none',
-              border: isSelected ? '2px dashed #007acc' : 'none',
-              boxShadow: isSelected ? '0 0 0 3px rgba(0, 122, 204, 0.2)' : 'none',
-              zIndex: 1,
-            }}
-          />
-        );
-      })}
+      >
+        <canvas
+          className={cursor.startsWith('cursor-') ? cursor : ''}
+          width={boardWidth}
+          height={boardHeight}
+          style={{
+            cursor: cursor.startsWith('cursor-') ? undefined : cursor,
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: `${boardWidth}px`,
+            height: `${boardHeight}px`,
+            zIndex: 2,
+            backgroundColor: 'transparent'
+          }}
+          ref={canvasRef}
+        ></canvas>
+
+        {elements.filter(el => el.type === 'video').map((element, index) => {
+          const isSelected = selectedElements && selectedElements.some(selectedEl =>
+            selectedEl.offsetX === element.offsetX &&
+            selectedEl.offsetY === element.offsetY &&
+            selectedEl.type === element.type
+          );
+          const displayX = Math.min(element.offsetX, element.offsetX + element.width);
+          const displayY = Math.min(element.offsetY, element.offsetY + element.height);
+          const displayWidth = Math.abs(element.width);
+          const displayHeight = Math.abs(element.height);
+
+          return (
+            <video
+              key={`video-${index}`}
+              src={element.src}
+              autoPlay
+              loop
+              muted
+              playsInline
+              preload="metadata"
+              style={{
+                position: 'absolute',
+                left: `${displayX}px`,
+                top: `${displayY}px`,
+                width: `${displayWidth}px`,
+                height: `${displayHeight}px`,
+                objectFit: 'contain',
+                pointerEvents: 'none',
+                border: isSelected ? '2px dashed #007acc' : 'none',
+                boxShadow: isSelected ? '0 0 0 3px rgba(0, 122, 204, 0.2)' : 'none',
+                zIndex: 1,
+              }}
+            />
+          );
+        })}
+      </div>
     </div>
   );
 };
